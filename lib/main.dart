@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -190,8 +191,91 @@ class LoopPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  bool isLoading = false;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> login() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password.')),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    try {
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = credential.user;
+
+      if (user != null && !user.emailVerified) {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please verify your college email before logging in.'),
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainShell()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message;
+
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No account found with this email.';
+          break;
+        case 'wrong-password':
+        case 'invalid-credential':
+          message = 'Incorrect email or password.';
+          break;
+        case 'invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'user-disabled':
+          message = 'This account has been disabled.';
+          break;
+        default:
+          message = 'Login failed. Please try again.';
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,19 +299,46 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: 82),
               const Label('College Email'),
-              const InputBox(icon: Icons.school_outlined, hint: 'name@university.edu'),
-              const SizedBox(height: 42),
-              const Label('Password'),
-              const InputBox(icon: Icons.lock_outline_rounded, hint: '••••••••', obscure: true),
-              const SizedBox(height: 58),
-              PrimaryButton(
-                text: 'Continue',
-                onTap: () => Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const MainShell()),
-                ),
+              InputBox(
+                controller: emailController,
+                icon: Icons.school_outlined,
+                hint: 'name@university.edu',
               ),
               const SizedBox(height: 42),
+              const Label('Password'),
+              InputBox(
+                controller: passwordController,
+                icon: Icons.lock_outline_rounded,
+                hint: '••••••••',
+                obscure: true,
+              ),
+              const SizedBox(height: 58),
+              PrimaryButton(
+                text: isLoading ? 'Signing in...' : 'Continue',
+                onTap: isLoading ? () {} : login,
+              ),
+              const SizedBox(height: 24),
+              Center(
+                child: TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SignupScreen()),
+                    );
+                  },
+                  child: const Text(
+                    'New to ReLoop? Create Account',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: green,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
               Row(
                 children: [
                   Expanded(child: Divider(color: Colors.grey.shade300)),
@@ -240,15 +351,9 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               OutlinedButton.icon(
-                onPressed: () => Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const MainShell()),
-                ),
+                onPressed: () {},
                 icon: const Text('G', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: Colors.red)),
-                label: const Text(
-                  'Continue with College Google Account',
-                  style: TextStyle(fontSize: 17, color: ink),
-                ),
+                label: const Text('Continue with College Google Account', style: TextStyle(fontSize: 17, color: ink)),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(72),
                   side: const BorderSide(color: Color(0xFFC6D1C4), width: 1.5),
@@ -286,6 +391,203 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
+class SignupScreen extends StatefulWidget {
+  const SignupScreen({super.key});
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
+  bool isLoading = false;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> signup() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    final confirmPassword = confirmPasswordController.text;
+
+    if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all fields.')),
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 6 characters.')),
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match.')),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    try {
+      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      await credential.user?.sendEmailVerification();
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Account Created 🎉'),
+          content: const Text(
+            'We sent a verification link to your email. Please verify your email and then log in to ReLoop.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      String message;
+
+      switch (e.code) {
+        case 'email-already-in-use':
+          message = 'An account already exists with this email.';
+          break;
+        case 'invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'weak-password':
+          message = 'Password is too weak. Use at least 6 characters.';
+          break;
+        default:
+          message = 'Account creation failed. Please try again.';
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create Account'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: ink,
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(44, 25, 44, 35),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const ReLoopLogo(compact: true),
+              const SizedBox(height: 55),
+              const Text(
+                'Join ReLoop',
+                style: TextStyle(fontSize: 39, fontWeight: FontWeight.w800, color: ink),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Create your verified campus account.',
+                style: TextStyle(fontSize: 20, color: muted, height: 1.4),
+              ),
+              const SizedBox(height: 48),
+              const Label('College Email'),
+              InputBox(
+                controller: emailController,
+                icon: Icons.school_outlined,
+                hint: 'name@university.edu',
+              ),
+              const SizedBox(height: 30),
+              const Label('Password'),
+              InputBox(
+                controller: passwordController,
+                icon: Icons.lock_outline_rounded,
+                hint: 'Minimum 6 characters',
+                obscure: true,
+              ),
+              const SizedBox(height: 30),
+              const Label('Confirm Password'),
+              InputBox(
+                controller: confirmPasswordController,
+                icon: Icons.lock_outline_rounded,
+                hint: 'Re-enter your password',
+                obscure: true,
+              ),
+              const SizedBox(height: 42),
+              PrimaryButton(
+                text: isLoading ? 'Creating Account...' : 'Create Account',
+                onTap: isLoading ? () {} : signup,
+              ),
+              const SizedBox(height: 25),
+              Center(
+                child: TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text(
+                    'Already have an account? Login',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: green),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 25),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F6FF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFD9E2FF)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.verified_user_outlined, color: green, size: 30),
+                    SizedBox(width: 15),
+                    Expanded(
+                      child: Text(
+                        'You must verify your college email before accessing ReLoop.',
+                        style: TextStyle(fontSize: 15, height: 1.4, color: muted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class Label extends StatelessWidget {
   final String text;
   const Label(this.text, {super.key});
@@ -300,11 +602,20 @@ class InputBox extends StatelessWidget {
   final IconData icon;
   final String hint;
   final bool obscure;
-  const InputBox({super.key, required this.icon, required this.hint, this.obscure = false});
+  final TextEditingController? controller;
+
+  const InputBox({
+    super.key,
+    this.controller,
+    required this.icon,
+    required this.hint,
+    this.obscure = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller,
       obscureText: obscure,
       style: const TextStyle(fontSize: 19, color: ink),
       decoration: InputDecoration(
