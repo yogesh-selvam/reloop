@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
 import 'features/auth/signup_screen.dart';
+import 'features/auth/verify_email_screen.dart';
+import 'core/services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -203,6 +205,9 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+
+  final AuthService _authService = AuthService();
+
   bool isLoading = false;
 
   @override
@@ -218,7 +223,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter email and password.')),
+        const SnackBar(
+          content: Text('Please enter email and password.'),
+        ),
       );
       return;
     }
@@ -226,56 +233,103 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = true);
 
     try {
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final user = await _authService.login(
         email: email,
         password: password,
       );
 
-      final user = credential.user;
+      if (user == null) {
+        throw Exception('Unable to login.');
+      }
 
-      if (user != null && !user.emailVerified) {
-        await FirebaseAuth.instance.signOut();
+      await user.reload();
+
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      if (currentUser == null) {
+        throw Exception('Unable to login.');
+      }
+
+      if (!currentUser.emailVerified) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please verify your college email before logging in.'),
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VerifyEmailScreen(
+              email: email,
+            ),
           ),
         );
+
         return;
       }
 
       if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MainShell()),
+        MaterialPageRoute(
+          builder: (_) => const MainShell(),
+        ),
       );
-    } on FirebaseAuthException catch (e) {
-      String message;
-
-      switch (e.code) {
-        case 'user-not-found':
-          message = 'No account found with this email.';
-          break;
-        case 'wrong-password':
-        case 'invalid-credential':
-          message = 'Incorrect email or password.';
-          break;
-        case 'invalid-email':
-          message = 'Please enter a valid email address.';
-          break;
-        case 'user-disabled':
-          message = 'This account has been disabled.';
-          break;
-        default:
-          message = 'Login failed. Please try again.';
-      }
-
+    } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(
+              'Exception: ',
+              '',
+            ),
+          ),
+        ),
       );
     } finally {
-      if (mounted) setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  Future<void> forgotPassword() async {
+    final email = emailController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter your email address first.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await _authService.resetPassword(email);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Password reset email sent. Please check your inbox.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(
+              'Exception: ',
+              '',
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -289,37 +343,77 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const ReLoopLogo(compact: true),
+
               const SizedBox(height: 92),
+
               const Text(
                 'Welcome to ReLoop',
-                style: TextStyle(fontSize: 39, fontWeight: FontWeight.w800, color: ink),
+                style: TextStyle(
+                  fontSize: 39,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
               ),
+
               const SizedBox(height: 12),
+
               const Text(
                 'Your campus marketplace for smarter\nreuse.',
-                style: TextStyle(fontSize: 23, height: 1.45, color: muted),
+                style: TextStyle(
+                  fontSize: 23,
+                  height: 1.45,
+                  color: muted,
+                ),
               ),
-              const SizedBox(height: 82),
+
+              const SizedBox(height: 65),
+
               const Label('College Email'),
+
               InputBox(
                 controller: emailController,
                 icon: Icons.school_outlined,
                 hint: 'name@university.edu',
               ),
-              const SizedBox(height: 42),
+
+              const SizedBox(height: 30),
+
               const Label('Password'),
+
               InputBox(
                 controller: passwordController,
                 icon: Icons.lock_outline_rounded,
                 hint: '••••••••',
                 obscure: true,
               ),
-              const SizedBox(height: 58),
+
+              const SizedBox(height: 8),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: isLoading ? null : forgotPassword,
+                  child: const Text(
+                    'Forgot Password?',
+                    style: TextStyle(
+                      color: green,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
               PrimaryButton(
-                text: isLoading ? 'Signing in...' : 'Continue',
+                text: isLoading
+                    ? 'Signing in...'
+                    : 'Continue',
                 onTap: isLoading ? () {} : login,
               ),
+
               const SizedBox(height: 24),
+
               Center(
                 child: TextButton(
                   onPressed: isLoading
@@ -327,7 +421,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       : () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const SignupScreen()),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                        const SignupScreen(),
+                      ),
                     );
                   },
                   child: const Text(
@@ -340,46 +437,104 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 18),
+
               Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 25),
-                    child: Text('OR', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: muted)),
+                  Expanded(
+                    child: Divider(
+                      color: Colors.grey.shade300,
+                    ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 25,
+                    ),
+                    child: Text(
+                      'OR',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: muted,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Divider(
+                      color: Colors.grey.shade300,
+                    ),
+                  ),
                 ],
               ),
+
               const SizedBox(height: 40),
+
               OutlinedButton.icon(
                 onPressed: () {},
-                icon: const Text('G', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: Colors.red)),
-                label: const Text('Continue with College Google Account', style: TextStyle(fontSize: 17, color: ink)),
+                icon: const Text(
+                  'G',
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.red,
+                  ),
+                ),
+                label: const Text(
+                  'Continue with College Google Account',
+                  style: TextStyle(
+                    fontSize: 17,
+                    color: ink,
+                  ),
+                ),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(72),
-                  side: const BorderSide(color: Color(0xFFC6D1C4), width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                  minimumSize:
+                  const Size.fromHeight(72),
+                  side: const BorderSide(
+                    color: Color(0xFFC6D1C4),
+                    width: 1.5,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(22),
+                  ),
                   backgroundColor: Colors.white,
                 ),
               ),
+
               const SizedBox(height: 70),
+
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 28,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF3F6FF),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFD9E2FF)),
+                  borderRadius:
+                  BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFD9E2FF),
+                  ),
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.shield_outlined, color: green, size: 32),
+                    Icon(
+                      Icons.shield_outlined,
+                      color: green,
+                      size: 32,
+                    ),
                     SizedBox(width: 20),
                     Expanded(
                       child: Text(
                         'Only verified college\nstudents can access ReLoop.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 16, height: 1.5, color: muted, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: muted,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -392,7 +547,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
 
 class Label extends StatelessWidget {
   final String text;
