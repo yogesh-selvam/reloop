@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
-import 'features/auth/signup_screen.dart';
-import 'features/auth/verify_email_screen.dart';
-import 'core/services/auth_service.dart';
+import 'features/listings/my_listings_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -205,9 +203,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-
-  final AuthService _authService = AuthService();
-
   bool isLoading = false;
 
   @override
@@ -223,9 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter email and password.'),
-        ),
+        const SnackBar(content: Text('Please enter email and password.')),
       );
       return;
     }
@@ -233,103 +226,43 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = true);
 
     try {
-      final user = await _authService.login(
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      if (user == null) {
-        throw Exception('Unable to login.');
-      }
-
-      await user.reload();
-
-      final currentUser = FirebaseAuth.instance.currentUser;
-
-      if (currentUser == null) {
-        throw Exception('Unable to login.');
-      }
-
-      if (!currentUser.emailVerified) {
-        if (!mounted) return;
-
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VerifyEmailScreen(
-              email: email,
-            ),
-          ),
-        );
-
-        return;
-      }
-
       if (!mounted) return;
-
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const MainShell(),
-        ),
+        MaterialPageRoute(builder: (_) => const MainShell()),
       );
-    } catch (e) {
-      if (!mounted) return;
+    } on FirebaseAuthException catch (e) {
+      String message;
 
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No account found with this email.';
+          break;
+        case 'wrong-password':
+        case 'invalid-credential':
+          message = 'Incorrect email or password.';
+          break;
+        case 'invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'user-disabled':
+          message = 'This account has been disabled.';
+          break;
+        default:
+          message = 'Login failed. Please try again.';
+      }
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst(
-              'Exception: ',
-              '',
-            ),
-          ),
-        ),
+        SnackBar(content: Text(message)),
       );
     } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
-    }
-  }
-
-  Future<void> forgotPassword() async {
-    final email = emailController.text.trim();
-
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter your email address first.'),
-        ),
-      );
-      return;
-    }
-
-    try {
-      await _authService.resetPassword(email);
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Password reset email sent. Please check your inbox.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst(
-              'Exception: ',
-              '',
-            ),
-          ),
-        ),
-      );
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -343,198 +276,76 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const ReLoopLogo(compact: true),
-
               const SizedBox(height: 92),
-
               const Text(
                 'Welcome to ReLoop',
-                style: TextStyle(
-                  fontSize: 39,
-                  fontWeight: FontWeight.w800,
-                  color: ink,
-                ),
+                style: TextStyle(fontSize: 39, fontWeight: FontWeight.w800, color: ink),
               ),
-
               const SizedBox(height: 12),
-
               const Text(
                 'Your campus marketplace for smarter\nreuse.',
-                style: TextStyle(
-                  fontSize: 23,
-                  height: 1.45,
-                  color: muted,
-                ),
+                style: TextStyle(fontSize: 23, height: 1.45, color: muted),
               ),
-
-              const SizedBox(height: 65),
-
+              const SizedBox(height: 82),
               const Label('College Email'),
-
               InputBox(
                 controller: emailController,
                 icon: Icons.school_outlined,
                 hint: 'name@university.edu',
               ),
-
-              const SizedBox(height: 30),
-
+              const SizedBox(height: 42),
               const Label('Password'),
-
               InputBox(
                 controller: passwordController,
                 icon: Icons.lock_outline_rounded,
                 hint: '••••••••',
                 obscure: true,
               ),
-
-              const SizedBox(height: 8),
-
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: isLoading ? null : forgotPassword,
-                  child: const Text(
-                    'Forgot Password?',
-                    style: TextStyle(
-                      color: green,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
+              const SizedBox(height: 58),
               PrimaryButton(
-                text: isLoading
-                    ? 'Signing in...'
-                    : 'Continue',
+                text: isLoading ? 'Signing in...' : 'Continue',
                 onTap: isLoading ? () {} : login,
               ),
-
-              const SizedBox(height: 24),
-
-              Center(
-                child: TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                        const SignupScreen(),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'New to ReLoop? Create Account',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: green,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
+              const SizedBox(height: 42),
               Row(
                 children: [
-                  Expanded(
-                    child: Divider(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
+                  Expanded(child: Divider(color: Colors.grey.shade300)),
                   const Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 25,
-                    ),
-                    child: Text(
-                      'OR',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: muted,
-                      ),
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 25),
+                    child: Text('OR', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: muted)),
                   ),
-                  Expanded(
-                    child: Divider(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
+                  Expanded(child: Divider(color: Colors.grey.shade300)),
                 ],
               ),
-
               const SizedBox(height: 40),
-
               OutlinedButton.icon(
                 onPressed: () {},
-                icon: const Text(
-                  'G',
-                  style: TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.red,
-                  ),
-                ),
-                label: const Text(
-                  'Continue with College Google Account',
-                  style: TextStyle(
-                    fontSize: 17,
-                    color: ink,
-                  ),
-                ),
+                icon: const Text('G', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: Colors.red)),
+                label: const Text('Continue with College Google Account', style: TextStyle(fontSize: 17, color: ink)),
                 style: OutlinedButton.styleFrom(
-                  minimumSize:
-                  const Size.fromHeight(72),
-                  side: const BorderSide(
-                    color: Color(0xFFC6D1C4),
-                    width: 1.5,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(22),
-                  ),
+                  minimumSize: const Size.fromHeight(72),
+                  side: const BorderSide(color: Color(0xFFC6D1C4), width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                   backgroundColor: Colors.white,
                 ),
               ),
-
               const SizedBox(height: 70),
-
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 28,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF3F6FF),
-                  borderRadius:
-                  BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFFD9E2FF),
-                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFD9E2FF)),
                 ),
                 child: const Row(
                   children: [
-                    Icon(
-                      Icons.shield_outlined,
-                      color: green,
-                      size: 32,
-                    ),
+                    Icon(Icons.shield_outlined, color: green, size: 32),
                     SizedBox(width: 20),
                     Expanded(
                       child: Text(
                         'Only verified college\nstudents can access ReLoop.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          height: 1.5,
-                          color: muted,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: TextStyle(fontSize: 16, height: 1.5, color: muted, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -697,56 +508,146 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(30, 18, 30, 20),
-        children: [
-          const AppHeader(),
-          const SizedBox(height: 40),
-          const Text('Good morning, Arun 👋', style: TextStyle(fontSize: 35, fontWeight: FontWeight.w800, color: ink)),
-          const SizedBox(height: 8),
-          const Text('Make your next purchase a reuse.', style: TextStyle(fontSize: 19, color: muted)),
-          const SizedBox(height: 30),
-          SearchBox(),
-          const SizedBox(height: 28),
-          ImpactCard(),
-          const SizedBox(height: 34),
-          const Text('Categories', style: TextStyle(fontSize: 18, color: muted)),
-          const SizedBox(height: 13),
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: const [
-                CategoryChip(icon: Icons.menu_book_outlined, text: 'Books'),
-                CategoryChip(icon: Icons.devices_outlined, text: 'Electronics'),
-                CategoryChip(icon: Icons.backpack_outlined, text: 'Bags'),
-                CategoryChip(icon: Icons.edit_outlined, text: 'Stationery'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 30),
-          const Text('Recommended for you', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800, color: ink)),
-          const SizedBox(height: 18),
-          const ProductCard(
-            title: 'Java Programming Book',
-            price: '₹120',
-            condition: 'Good condition',
-            distance: '0.5km',
-            icon: Icons.menu_book_rounded,
-            impact: '1.2 kg CO₂ saved',
-          ),
-          const SizedBox(height: 20),
-          const ProductCard(
-            title: 'Wireless Headphones',
-            price: '₹8,500',
-            condition: 'Like New',
-            distance: '1.2km',
-            icon: Icons.headphones_rounded,
-            impact: '4.5 kg CO₂ saved',
-          ),
-        ],
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('listings')
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final docs = snapshot.data?.docs ?? [];
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(30, 18, 30, 20),
+            children: [
+              const AppHeader(),
+              const SizedBox(height: 40),
+              const Text(
+                'Good morning, Arun 👋',
+                style: TextStyle(
+                  fontSize: 35,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Make your next purchase a reuse.',
+                style: TextStyle(fontSize: 19, color: muted),
+              ),
+              const SizedBox(height: 30),
+              const SearchBox(),
+              const SizedBox(height: 28),
+              const ImpactCard(),
+              const SizedBox(height: 34),
+              const Text(
+                'Categories',
+                style: TextStyle(fontSize: 18, color: muted),
+              ),
+              const SizedBox(height: 13),
+              SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: const [
+                    CategoryChip(
+                      icon: Icons.menu_book_outlined,
+                      text: 'Books',
+                    ),
+                    CategoryChip(
+                      icon: Icons.devices_outlined,
+                      text: 'Electronics',
+                    ),
+                    CategoryChip(
+                      icon: Icons.backpack_outlined,
+                      text: 'Bags',
+                    ),
+                    CategoryChip(
+                      icon: Icons.edit_outlined,
+                      text: 'Stationery',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
+              const Text(
+                'Listings',
+                style: TextStyle(
+                  fontSize: 29,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Center(child: CircularProgressIndicator())
+              else if (snapshot.hasError)
+                const Text(
+                  'Unable to load listings.',
+                  style: TextStyle(color: muted, fontSize: 17),
+                )
+              else if (docs.isEmpty)
+                  const Text(
+                    'No listings yet. Create the first one!',
+                    style: TextStyle(color: muted, fontSize: 17),
+                  )
+                else
+                  ...docs.map((doc) {
+                    final data = doc.data();
+                    final title = (data['title'] ?? 'Untitled').toString();
+                    final description =
+                    (data['description'] ?? '').toString();
+                    final category =
+                    (data['category'] ?? 'Other').toString();
+                    final condition =
+                    (data['condition'] ?? 'Good').toString();
+                    final listingType =
+                    (data['listingType'] ?? 'Sell').toString();
+                    final price = data['price'];
+
+                    String priceText = 'Free';
+                    if (price is num && price > 0) {
+                      priceText = '₹${price.toStringAsFixed(0)}';
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: ProductCard(
+                        title: title,
+                        price: priceText,
+                        condition: condition,
+                        distance: category,
+                        icon: _iconForCategory(category),
+                        impact: listingType == 'Donate'
+                            ? 'Donation'
+                            : description.isEmpty
+                            ? 'Available'
+                            : 'Listed',
+                      ),
+                    );
+                  }),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  static IconData _iconForCategory(String category) {
+    switch (category.toLowerCase()) {
+      case 'electronics':
+        return Icons.devices_outlined;
+      case 'bags':
+        return Icons.backpack_outlined;
+      case 'stationery':
+        return Icons.edit_outlined;
+      case 'furniture':
+        return Icons.chair_outlined;
+      case 'books':
+        return Icons.menu_book_rounded;
+      default:
+        return Icons.inventory_2_outlined;
+    }
   }
 }
 
@@ -1004,7 +905,25 @@ class ListItemScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 45),
-          PrimaryButton(text: 'Create Listing', onTap: () {}),
+          PrimaryButton(
+            text: 'Create Listing',
+            onTap: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const CreateListingScreen(),
+                ),
+              );
+
+              if (result == true && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Listing created successfully!'),
+                  ),
+                );
+              }
+            },
+          ),
         ],
       ),
     );
@@ -1051,85 +970,342 @@ class MiniInfo extends StatelessWidget {
   );
 }
 
+class CreateListingScreen extends StatefulWidget {
+  const CreateListingScreen({super.key});
+
+  @override
+  State<CreateListingScreen> createState() => _CreateListingScreenState();
+}
+
+class _CreateListingScreenState extends State<CreateListingScreen> {
+  final titleController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final priceController = TextEditingController();
+
+  String category = 'Books';
+  String condition = 'Good';
+  String listingType = 'Sell';
+  bool isSaving = false;
+
+  final categories = const [
+    'Books',
+    'Electronics',
+    'Bags',
+    'Stationery',
+    'Furniture',
+    'Other',
+  ];
+
+  final conditions = const [
+    'New',
+    'Like New',
+    'Good',
+    'Fair',
+  ];
+
+  final listingTypes = const [
+    'Sell',
+    'Exchange',
+    'Donate',
+  ];
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    descriptionController.dispose();
+    priceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> saveListing() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login again.')),
+      );
+      return;
+    }
+
+    final title = titleController.text.trim();
+    final description = descriptionController.text.trim();
+
+    if (title.isEmpty || description.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill title and description.'),
+        ),
+      );
+      return;
+    }
+
+    final price = double.tryParse(priceController.text.trim()) ?? 0;
+
+    setState(() => isSaving = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('listings').add({
+        'title': title,
+        'description': description,
+        'category': category,
+        'condition': condition,
+        'listingType': listingType,
+        'price': price,
+        'sellerId': user.uid,
+        'sellerEmail': user.email ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      Navigator.pop(context, true);
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.message ?? 'Unable to create listing.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create Listing'),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Create Listing',
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              const Label('Item Title'),
+              InputBox(
+                controller: titleController,
+                icon: Icons.title,
+                hint: 'Enter item title',
+              ),
+
+              const SizedBox(height: 22),
+
+              const Label('Description'),
+              TextField(
+                controller: descriptionController,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  hintText: 'Describe your item',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              const Label('Category'),
+              DropdownButtonFormField<String>(
+                initialValue: category,
+                items: categories.map((item) {
+                  return DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => category = value);
+                  }
+                },
+              ),
+
+              const SizedBox(height: 22),
+
+              const Label('Condition'),
+              DropdownButtonFormField<String>(
+                initialValue: condition,
+                items: conditions.map((item) {
+                  return DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => condition = value);
+                  }
+                },
+              ),
+
+              const SizedBox(height: 22),
+
+              const Label('Listing Type'),
+              DropdownButtonFormField<String>(
+                initialValue: listingType,
+                items: listingTypes.map((item) {
+                  return DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => listingType = value);
+                  }
+                },
+              ),
+
+              const SizedBox(height: 22),
+
+              const Label('Price'),
+              InputBox(
+                controller: priceController,
+                icon: Icons.currency_rupee,
+                hint: 'Enter price',
+              ),
+
+              const SizedBox(height: 35),
+
+              PrimaryButton(
+                text: isSaving ? 'Saving...' : 'Save Listing',
+                onTap: isSaving ? () {} : saveListing,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
-        children: [
-          const AppHeader(),
-          const SizedBox(height: 55),
-          const Center(child: Text('✨ Perfect Match Found', style: TextStyle(color: green, fontSize: 17, fontWeight: FontWeight.w700))),
-          const SizedBox(height: 28),
-          const Text('Smart Matches', textAlign: TextAlign.center, style: TextStyle(fontSize: 37, fontWeight: FontWeight.w800, color: ink)),
-          const SizedBox(height: 10),
-          const Text('We found students who need what you have.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: muted)),
-          const SizedBox(height: 48),
-          Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), border: Border.all(color: border)),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('YOUR ITEM', style: TextStyle(fontSize: 15, color: muted, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                    const SizedBox(height: 22),
-                    Row(children: [
-                      ItemIllustration(icon: Icons.menu_book_rounded),
-                      const SizedBox(width: 22),
-                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Java Programming\nBook', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: ink, height: 1.4)),
-                        Text('Condition: Like New', style: TextStyle(fontSize: 17, color: muted)),
-                      ])),
-                    ]),
-                  ]),
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('listings')
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final docs = snapshot.data?.docs ?? [];
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
+            children: [
+              const AppHeader(),
+              const SizedBox(height: 45),
+              const Text(
+                'Explore Listings',
+                style: TextStyle(
+                  fontSize: 37,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
                 ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  padding: const EdgeInsets.fromLTRB(28, 40, 28, 30),
-                  decoration: BoxDecoration(color: const Color(0xFF9AF0AB), borderRadius: BorderRadius.circular(25)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Row(children: [
-                      CircleAvatar(radius: 17, backgroundColor: Colors.white, child: Icon(Icons.person, color: green, size: 20)),
-                      SizedBox(width: 12),
-                      Text('Priya needs this book', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: green)),
-                    ]),
-                    const SizedBox(height: 25),
-                    Row(children: [
-                      ItemIllustration(icon: Icons.auto_stories_rounded),
-                      const SizedBox(width: 22),
-                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('SHE OFFERS', style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                        SizedBox(height: 8),
-                        Text('Python Programming\nBook', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: green, height: 1.35)),
-                      ])),
-                    ]),
-                  ]),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 45),
-          PrimaryButton(text: 'View Match', onTap: () {}),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 70,
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD2F2DA),
-                foregroundColor: green,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
               ),
-              child: const Text('Start Exchange', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-            ),
-          ),
-        ],
+              const SizedBox(height: 10),
+              const Text(
+                'Find items shared by your campus community.',
+                style: TextStyle(fontSize: 19, color: muted),
+              ),
+              const SizedBox(height: 28),
+              const SearchBox(),
+              const SizedBox(height: 28),
+
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Center(child: CircularProgressIndicator())
+              else if (snapshot.hasError)
+                const Text(
+                  'Unable to load listings.',
+                  style: TextStyle(color: muted, fontSize: 17),
+                )
+              else if (docs.isEmpty)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 60),
+                      child: Text(
+                        'No listings yet.',
+                        style: TextStyle(fontSize: 18, color: muted),
+                      ),
+                    ),
+                  )
+                else
+                  ...docs.map((doc) {
+                    final data = doc.data();
+                    final title = (data['title'] ?? 'Untitled').toString();
+                    final description =
+                    (data['description'] ?? '').toString();
+                    final category =
+                    (data['category'] ?? 'Other').toString();
+                    final condition =
+                    (data['condition'] ?? 'Good').toString();
+                    final listingType =
+                    (data['listingType'] ?? 'Sell').toString();
+                    final price = data['price'];
+
+                    String priceText = 'Free';
+                    if (price is num && price > 0) {
+                      priceText = '₹${price.toStringAsFixed(0)}';
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: ProductCard(
+                        title: title,
+                        price: priceText,
+                        condition: condition,
+                        distance: category,
+                        icon: _iconForCategory(category),
+                        impact: listingType == 'Donate'
+                            ? 'Donation'
+                            : description.isEmpty
+                            ? 'Available'
+                            : 'Listed',
+                      ),
+                    );
+                  }),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  static IconData _iconForCategory(String category) {
+    switch (category.toLowerCase()) {
+      case 'electronics':
+        return Icons.devices_outlined;
+      case 'bags':
+        return Icons.backpack_outlined;
+      case 'stationery':
+        return Icons.edit_outlined;
+      case 'furniture':
+        return Icons.chair_outlined;
+      case 'books':
+        return Icons.menu_book_rounded;
+      default:
+        return Icons.inventory_2_outlined;
+    }
   }
 }
 
@@ -1313,7 +1489,16 @@ class ProfileScreen extends StatelessWidget {
             leading: Icon(e.$2, color: green),
             title: Text(e.$1, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+            onTap: () {
+              if (e.$1 == 'My Listings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const MyListingsScreen(),
+                  ),
+                );
+              }
+            },
           )),
         ],
       ),
