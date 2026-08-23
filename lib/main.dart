@@ -687,7 +687,21 @@ class HomeScreen extends StatelessWidget {
 }
 
 class FirestoreListingsList extends StatelessWidget {
-  const FirestoreListingsList({super.key});
+  final String searchQuery;
+  final String category;
+  final String sortBy;
+
+  const FirestoreListingsList({
+    super.key,
+    this.searchQuery = '',
+    this.category = 'All',
+    this.sortBy = 'Newest',
+  });
+
+  double _price(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(RegExp(r'[^0-9.]'), '') ?? '') ?? 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -711,7 +725,42 @@ class FirestoreListingsList extends StatelessWidget {
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        final query = searchQuery.trim().toLowerCase();
+        final docs = (snapshot.data?.docs ?? []).where((doc) {
+          final data = doc.data();
+          final itemCategory = (data['category'] ?? 'Other').toString();
+          final searchable = [
+            data['title'],
+            data['description'],
+            data['sellerName'],
+            data['sellerEmail'],
+            itemCategory,
+          ].map((value) => value?.toString().toLowerCase() ?? '').join(' ');
+
+          final matchesSearch = query.isEmpty || searchable.contains(query);
+          final matchesCategory = category == 'All' || itemCategory == category;
+          return matchesSearch && matchesCategory;
+        }).toList();
+
+        docs.sort((a, b) {
+          final aData = a.data();
+          final bData = b.data();
+          if (sortBy == 'Price: Low to High') {
+            return _price(aData['price']).compareTo(_price(bData['price']));
+          }
+          if (sortBy == 'Price: High to Low') {
+            return _price(bData['price']).compareTo(_price(aData['price']));
+          }
+
+          final aTime = aData['createdAt'];
+          final bTime = bData['createdAt'];
+          if (aTime is Timestamp && bTime is Timestamp) {
+            return bTime.compareTo(aTime);
+          }
+          if (aTime is Timestamp) return -1;
+          if (bTime is Timestamp) return 1;
+          return 0;
+        });
 
         if (docs.isEmpty) {
           return Container(
@@ -721,10 +770,23 @@ class FirestoreListingsList extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: border),
             ),
-            child: const Text(
-              'No listings yet. Create your first listing from Sell.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 17, color: muted),
+            child: Column(
+              children: [
+                const Icon(Icons.search_off_rounded, size: 48, color: muted),
+                const SizedBox(height: 12),
+                const Text(
+                  'No listings found.',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: ink),
+                ),
+                if (query.isNotEmpty || category != 'All') ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Try another search or category.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: muted),
+                  ),
+                ],
+              ],
             ),
           );
         }
@@ -1670,8 +1732,25 @@ class _CreateListingScreenState extends State<CreateListingScreen> {
   }
 }
 
-class ExploreScreen extends StatelessWidget {
+class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
+
+  @override
+  State<ExploreScreen> createState() => _ExploreScreenState();
+}
+
+class _ExploreScreenState extends State<ExploreScreen> {
+  final searchController = TextEditingController();
+  String selectedCategory = 'All';
+  String selectedSort = 'Newest';
+
+  final categories = const ['All', 'Books', 'Electronics', 'Bags', 'Stationery', 'Furniture', 'Other'];
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1692,8 +1771,96 @@ class ExploreScreen extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 18, color: muted),
           ),
-          const SizedBox(height: 35),
-          const FirestoreListingsList(),
+          const SizedBox(height: 30),
+          TextField(
+            controller: searchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search, size: 30, color: muted),
+              suffixIcon: searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                tooltip: 'Clear search',
+                icon: const Icon(Icons.clear, color: muted),
+                onPressed: () {
+                  searchController.clear();
+                  setState(() {});
+                },
+              ),
+              hintText: 'Search books, gadgets, bags...',
+              hintStyle: const TextStyle(fontSize: 18, color: ink),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(vertical: 18),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: const BorderSide(color: border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: const BorderSide(color: border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: const BorderSide(color: green, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 48,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                final selected = category == selectedCategory;
+                return ChoiceChip(
+                  label: Text(category),
+                  selected: selected,
+                  onSelected: (_) => setState(() => selectedCategory = category),
+                  selectedColor: lightGreen,
+                  backgroundColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: selected ? green : ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  side: BorderSide(color: selected ? green : border),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              const Text(
+                'Listings',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: ink),
+              ),
+              const Spacer(),
+              DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedSort,
+                  borderRadius: BorderRadius.circular(16),
+                  items: const [
+                    DropdownMenuItem(value: 'Newest', child: Text('Newest')),
+                    DropdownMenuItem(value: 'Price: Low to High', child: Text('Price: Low to High')),
+                    DropdownMenuItem(value: 'Price: High to Low', child: Text('Price: High to Low')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => selectedSort = value);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FirestoreListingsList(
+            searchQuery: searchController.text,
+            category: selectedCategory,
+            sortBy: selectedSort,
+          ),
           const SizedBox(height: 35),
           const Divider(height: 1),
           const SizedBox(height: 35),
@@ -4386,60 +4553,25 @@ class NotificationsScreen extends StatelessWidget {
   }
 }
 
-class _SaveListingButton extends StatelessWidget {
+class _SaveListingButton extends StatefulWidget {
   final String listingId;
 
   const _SaveListingButton({required this.listingId});
 
-  Future<void> _toggleSaved(BuildContext context) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login to save items.')),
-      );
-      return;
-    }
+  @override
+  State<_SaveListingButton> createState() => _SaveListingButtonState();
+}
 
-    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-
-    try {
-      final snapshot = await userRef.get();
-      final data = snapshot.data() ?? <String, dynamic>{};
-      final saved = List<String>.from(
-        (data['savedListingIds'] as List<dynamic>? ?? const <dynamic>[])
-            .map((e) => e.toString()),
-      );
-
-      final isSaved = saved.contains(listingId);
-      await userRef.set(
-        {
-          'savedListingIds': isSaved
-              ? FieldValue.arrayRemove([listingId])
-              : FieldValue.arrayUnion([listingId]),
-        },
-        SetOptions(merge: true),
-      );
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isSaved ? 'Removed from Saved Items.' : 'Saved to Saved Items.'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to update Saved Items.')),
-      );
-    }
-  }
+class _SaveListingButtonState extends State<_SaveListingButton> {
+  bool? _isSaved;
+  bool _isUpdating = false;
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+
     if (user == null) {
-      return _saveIcon(context, false);
+      return _saveIcon(false);
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -4449,24 +4581,89 @@ class _SaveListingButton extends StatelessWidget {
         final savedIds = (data['savedListingIds'] as List<dynamic>? ?? const <dynamic>[])
             .map((e) => e.toString())
             .toSet();
-        return _saveIcon(context, savedIds.contains(listingId));
+
+        // Use the local value while the Firestore update is in flight so the
+        // bookmark changes immediately for the user.
+        final isSaved = _isSaved ?? savedIds.contains(widget.listingId);
+        return _saveIcon(isSaved);
       },
     );
   }
 
-  Widget _saveIcon(BuildContext context, bool isSaved) {
+  Widget _saveIcon(bool isSaved) {
     return Material(
       color: Colors.white.withOpacity(.95),
       shape: const CircleBorder(),
       child: IconButton(
         tooltip: isSaved ? 'Remove from saved' : 'Save item',
-        onPressed: () => _toggleSaved(context),
-        icon: Icon(
+        onPressed: _isUpdating ? null : _toggleSaved,
+        icon: _isUpdating
+            ? const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: green,
+          ),
+        )
+            : Icon(
           isSaved ? Icons.bookmark : Icons.bookmark_border,
           color: green,
         ),
       ),
     );
+  }
+
+  Future<void> _toggleSaved() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login to save items.')),
+      );
+      return;
+    }
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final previousValue = _isSaved;
+    final currentlySaved = _isSaved ?? false;
+    final nextValue = !currentlySaved;
+
+    setState(() {
+      _isSaved = nextValue;
+      _isUpdating = true;
+    });
+
+    try {
+      await userRef.set(
+        {
+          'savedListingIds': nextValue
+              ? FieldValue.arrayUnion([widget.listingId])
+              : FieldValue.arrayRemove([widget.listingId]),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nextValue ? 'Saved to Saved Items.' : 'Removed from Saved Items.',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSaved = previousValue);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update Saved Items.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdating = false);
+      }
+    }
   }
 }
 
