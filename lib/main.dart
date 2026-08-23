@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -955,6 +954,12 @@ class ProductCard extends StatelessWidget {
                     child: Text(impact, style: const TextStyle(color: muted, fontWeight: FontWeight.w700)),
                   ),
                 ),
+                if (listingId != null && listingId!.isNotEmpty)
+                  Positioned(
+                    top: 15,
+                    left: 15,
+                    child: _SaveListingButton(listingId: listingId!),
+                  ),
               ],
             ),
           ),
@@ -1874,9 +1879,8 @@ class ItemIllustration extends StatelessWidget {
 class ImpactScreen extends StatelessWidget {
   const ImpactScreen({super.key});
 
-  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _completedExchanges(
-      String uid,
-      ) async {
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _completedExchanges(String uid) async {
     final requester = await FirebaseFirestore.instance
         .collection('requests')
         .where('requesterId', isEqualTo: uid)
@@ -1896,7 +1900,19 @@ class ImpactScreen extends StatelessWidget {
     for (final doc in seller.docs) {
       unique[doc.id] = doc;
     }
-    return unique.values.toList();
+
+    final result = unique.values.toList();
+    result.sort((a, b) {
+      final aTime = a.data()['completedAt'];
+      final bTime = b.data()['completedAt'];
+      if (aTime is Timestamp && bTime is Timestamp) {
+        return bTime.compareTo(aTime);
+      }
+      if (aTime is Timestamp) return -1;
+      if (bTime is Timestamp) return 1;
+      return 0;
+    });
+    return result;
   }
 
   double _co2ForCategory(String? category) {
@@ -1914,6 +1930,16 @@ class ImpactScreen extends StatelessWidget {
       default:
         return 1.0;
     }
+  }
+
+  String _formatDate(dynamic value) {
+    if (value is! Timestamp) return 'Completed';
+    final date = value.toDate();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
   @override
@@ -1952,9 +1978,8 @@ class ImpactScreen extends StatelessWidget {
           final reusedCount = exchangeCount;
           final co2 = completed.fold<double>(
             0,
-                (sum, doc) => sum + _co2ForCategory(
-              (doc.data()['category'] ?? 'Other').toString(),
-            ),
+                (total, doc) => total +
+                _co2ForCategory((doc.data()['category'] ?? 'Other').toString()),
           );
           final ecoPoints = exchangeCount * 50;
           final co2Text = co2 == co2.roundToDouble()
@@ -1965,142 +1990,230 @@ class ImpactScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
             children: [
               const AppHeader(),
-              const SizedBox(height: 45),
+              const SizedBox(height: 35),
               const Text(
-                'Your Impact 🌱',
-                style: TextStyle(fontSize: 37, fontWeight: FontWeight.w800, color: ink),
+                'Impact History 🌱',
+                style: TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               const Text(
-                'Your completed exchanges are now counted here.',
-                style: TextStyle(fontSize: 19, color: muted),
+                'Your completed exchanges and environmental impact.',
+                style: TextStyle(fontSize: 17, color: muted),
               ),
-              const SizedBox(height: 38),
+              const SizedBox(height: 25),
+
+              // Summary
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 55, horizontal: 25),
+                padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF1FFF4),
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: const Color(0xFFB8D4BF)),
                 ),
                 child: Column(
                   children: [
                     Text(
                       '$co2Text kg',
-                      style: const TextStyle(fontSize: 61, fontWeight: FontWeight.w800, color: ink),
+                      style: const TextStyle(
+                        fontSize: 42,
+                        fontWeight: FontWeight.w800,
+                        color: ink,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     const Text(
                       'Estimated CO₂ saved',
-                      style: TextStyle(fontSize: 23, color: green, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: green,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    const SizedBox(height: 25),
-                    Container(
-                      padding: const EdgeInsets.all(22),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFC7EBD2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        children: [
-                          const CircleAvatar(
-                            radius: 28,
-                            backgroundColor: Colors.white,
-                            child: Icon(Icons.sync_alt_rounded, color: muted),
-                          ),
-                          const SizedBox(width: 18),
-                          Expanded(
-                            child: Text(
-                              exchangeCount == 0
-                                  ? 'Complete your first exchange to start building your impact.'
-                                  : '$exchangeCount completed exchange${exchangeCount == 1 ? '' : 's'} are contributing to your ReLoop impact.',
-                              style: const TextStyle(fontSize: 17, color: muted, height: 1.35),
-                            ),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _ImpactMiniStat('$reusedCount', 'Items Reused'),
+                        _ImpactMiniStat('$exchangeCount', 'Exchanges'),
+                        _ImpactMiniStat('$ecoPoints', 'Eco Points'),
+                      ],
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 30),
-              Row(
-                children: [
-                  Expanded(
-                    child: StatCard(
-                      number: '$reusedCount',
-                      label: 'Items Reused',
-                      icon: Icons.eco_outlined,
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: StatCard(
-                      number: '$exchangeCount',
-                      label: 'Exchanges',
-                      icon: Icons.sync_alt_rounded,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: StatCard(
-                      number: '0',
-                      label: 'Donations',
-                      icon: Icons.volunteer_activism_outlined,
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: StatCard(
-                      number: '$ecoPoints',
-                      label: 'Eco Points',
-                      icon: Icons.eco,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 30),
-              Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: border),
+              const Text(
+                'Completed Exchanges',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
+              ),
+              const SizedBox(height: 14),
+
+              if (completed.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: border),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.eco_outlined, size: 48, color: green),
+                      SizedBox(height: 12),
+                      Text(
+                        'No completed exchanges yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: ink,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Complete an exchange and it will appear here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: muted),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ...completed.map((doc) {
+                  final data = doc.data();
+                  final title =
+                  (data['listingTitle'] ?? 'Completed exchange').toString();
+                  final category =
+                  (data['category'] ?? 'Other').toString();
+                  final co2Saved = _co2ForCategory(category);
+                  final role = data['requesterId'] == user.uid
+                      ? 'Requested by you'
+                      : 'Your listing';
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: border),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.check_circle_outline, color: green),
-                        SizedBox(width: 12),
-                        Text(
-                          'Exchange Completion',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ink),
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: lightGreen,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.handshake_outlined,
+                            color: green,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: ink,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                '$category • $role',
+                                style: const TextStyle(color: muted),
+                              ),
+                              const SizedBox(height: 9),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 15,
+                                    color: muted,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _formatDate(data['completedAt']),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: muted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  const Icon(
+                                    Icons.eco_outlined,
+                                    size: 17,
+                                    color: green,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${co2Saved.toStringAsFixed(1)} kg CO₂',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: green,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    Text(
-                      exchangeCount == 0
-                          ? 'Your completed exchanges will appear here automatically.'
-                          : 'Every completed exchange increases your reuse count and estimated environmental impact.',
-                      style: const TextStyle(fontSize: 16, color: muted, height: 1.45),
-                    ),
-                  ],
-                ),
-              ),
+                  );
+                }),
             ],
           );
         },
       ),
     );
   }
+}
 
+class _ImpactMiniStat extends StatelessWidget {
+  final String number;
+  final String label;
+
+  const _ImpactMiniStat(this.number, this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          number,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: green,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: muted),
+        ),
+      ],
+    );
+  }
 }
 
 class StatCard extends StatelessWidget {
@@ -4273,76 +4386,786 @@ class NotificationsScreen extends StatelessWidget {
   }
 }
 
-class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+class _SaveListingButton extends StatelessWidget {
+  final String listingId;
+
+  const _SaveListingButton({required this.listingId});
+
+  Future<void> _toggleSaved(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login to save items.')),
+      );
+      return;
+    }
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+    try {
+      final snapshot = await userRef.get();
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final saved = List<String>.from(
+        (data['savedListingIds'] as List<dynamic>? ?? const <dynamic>[])
+            .map((e) => e.toString()),
+      );
+
+      final isSaved = saved.contains(listingId);
+      await userRef.set(
+        {
+          'savedListingIds': isSaved
+              ? FieldValue.arrayRemove([listingId])
+              : FieldValue.arrayUnion([listingId]),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isSaved ? 'Removed from Saved Items.' : 'Saved to Saved Items.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update Saved Items.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
-        children: [
-          const AppHeader(),
-          const SizedBox(height: 50),
-          const Center(child: CircleAvatar(radius: 55, backgroundColor: lightGreen, child: Icon(Icons.person, size: 65, color: green))),
-          const SizedBox(height: 18),
-          const Text('Arun Kumar', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: ink)),
-          const Text('Computer Science • Verified Student ✓', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 16)),
-          const SizedBox(height: 35),
-          Container(
-            padding: const EdgeInsets.all(25),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), border: Border.all(color: border)),
-            child: const Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-              ProfileStat('12', 'Listings'),
-              ProfileStat('8', 'Reuses'),
-              ProfileStat('420', 'Eco Points'),
-            ]),
-          ),
-          const SizedBox(height: 25),
-          ...[
-            ('My Listings', Icons.inventory_2_outlined),
-            ('Messages', Icons.chat_bubble_outline_rounded),
-            ('My Exchanges', Icons.sync_alt),
-            ('Saved Items', Icons.bookmark_border),
-            ('Impact History', Icons.history),
-            ('Notifications', Icons.notifications_none),
-            ('Settings', Icons.settings_outlined),
-          ].map((e) => ListTile(
-            contentPadding: const EdgeInsets.symmetric(vertical: 3),
-            leading: Icon(e.$2, color: green),
-            title: Text(e.$1, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              if (e.$1 == 'My Listings') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const MyListingsScreen(),
-                  ),
-                );
-              } else if (e.$1 == 'Messages') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ChatListScreen(),
-                  ),
-                );
-              } else if (e.$1 == 'My Exchanges') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RequestsScreen(),
-                  ),
-                );
-              } else if (e.$1 == 'Notifications') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationsScreen(),
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return _saveIcon(context, false);
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? <String, dynamic>{};
+        final savedIds = (data['savedListingIds'] as List<dynamic>? ?? const <dynamic>[])
+            .map((e) => e.toString())
+            .toSet();
+        return _saveIcon(context, savedIds.contains(listingId));
+      },
+    );
+  }
+
+  Widget _saveIcon(BuildContext context, bool isSaved) {
+    return Material(
+      color: Colors.white.withOpacity(.95),
+      shape: const CircleBorder(),
+      child: IconButton(
+        tooltip: isSaved ? 'Remove from saved' : 'Save item',
+        onPressed: () => _toggleSaved(context),
+        icon: Icon(
+          isSaved ? Icons.bookmark : Icons.bookmark_border,
+          color: green,
+        ),
+      ),
+    );
+  }
+}
+
+class SavedItemsScreen extends StatelessWidget {
+  const SavedItemsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const Scaffold(
+        body: SafeArea(
+          child: Center(child: Text('Please login again.')),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Saved Items'),
+        backgroundColor: Colors.white,
+        foregroundColor: ink,
+      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+        builder: (context, userSnapshot) {
+          if (userSnapshot.hasError) {
+            return const Center(child: Text('Unable to load saved items.'));
+          }
+          if (userSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: green));
+          }
+
+          final data = userSnapshot.data?.data() ?? <String, dynamic>{};
+          final savedIds = (data['savedListingIds'] as List<dynamic>? ?? const <dynamic>[])
+              .map((e) => e.toString())
+              .toList();
+
+          if (savedIds.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(30),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bookmark_border, size: 70, color: green),
+                    SizedBox(height: 15),
+                    Text(
+                      'No saved items yet',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: ink),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Tap the bookmark icon on a listing to save it here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, color: muted),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('listings').snapshots(),
+            builder: (context, listingSnapshot) {
+              if (listingSnapshot.hasError) {
+                return const Center(child: Text('Unable to load saved listings.'));
+              }
+              if (listingSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: green));
+              }
+
+              final docs = listingSnapshot.data?.docs
+                  .where((doc) => savedIds.contains(doc.id))
+                  .toList() ??
+                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+              if (docs.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'Your saved listings are no longer available.',
+                    style: TextStyle(fontSize: 17, color: muted),
                   ),
                 );
               }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(20),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+                  final item = doc.data();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: ProductCard(
+                      listingId: doc.id,
+                      title: (item['title'] ?? 'Untitled listing').toString(),
+                      price: _formatPrice(item['price']),
+                      condition: (item['condition'] ?? 'Condition not specified').toString(),
+                      distance: 'Nearby',
+                      icon: _iconForCategory(item['category']),
+                      impact: _impactForCategory(item['category']),
+                      sellerId: (item['sellerId'] ?? '').toString(),
+                      sellerName: (item['sellerName'] ?? item['sellerEmail'] ?? 'ReLoop Student').toString(),
+                      description: (item['description'] ?? '').toString(),
+                      category: (item['category'] ?? 'Other').toString(),
+                      listingType: (item['listingType'] ?? 'Sell').toString(),
+                    ),
+                  );
+                },
+              );
             },
-          )),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  Future<Map<String, dynamic>> _loadProfileStats(String uid) async {
+    final results = await Future.wait([
+      FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      FirebaseFirestore.instance
+          .collection('listings')
+          .where('sellerId', isEqualTo: uid)
+          .get(),
+      FirebaseFirestore.instance
+          .collection('requests')
+          .where('requesterId', isEqualTo: uid)
+          .where('status', isEqualTo: 'completed')
+          .get(),
+    ]);
+
+    final userDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
+    final listingSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final exchangeSnapshot = results[2] as QuerySnapshot<Map<String, dynamic>>;
+
+    final userData = userDoc.data() ?? <String, dynamic>{};
+
+    return {
+      'name': (userData['name'] ?? '').toString().trim(),
+      'email': (userData['email'] ?? '').toString().trim(),
+      'college': (userData['college'] ?? '').toString().trim(),
+      'department': (userData['department'] ?? '').toString().trim(),
+      'profileImage': (userData['profileImage'] ?? '').toString().trim(),
+      'listings': listingSnapshot.docs.length,
+      'reuses': _toInt(userData['itemsReused'], exchangeSnapshot.docs.length),
+      'ecoPoints': _toInt(userData['ecoPoints'], exchangeSnapshot.docs.length * 50),
+      'exchanges': _toInt(userData['exchanges'], exchangeSnapshot.docs.length),
+      'donations': _toInt(userData['donations'], 0),
+      'co2Saved': _toDouble(userData['co2Saved'], 0),
+    };
+  }
+
+  static int _toInt(dynamic value, int fallback) {
+    if (value is num) return value.toInt();
+    final parsed = int.tryParse(value?.toString() ?? '');
+    return parsed ?? fallback;
+  }
+
+  static double _toDouble(dynamic value, double fallback) {
+    if (value is num) return value.toDouble();
+    final parsed = double.tryParse(value?.toString() ?? '');
+    return parsed ?? fallback;
+  }
+
+  void _openPage(BuildContext context, String title) {
+    Widget? page;
+
+    switch (title) {
+      case 'My Listings':
+        page = const MyListingsScreen();
+        break;
+      case 'Messages':
+        page = const ChatListScreen();
+        break;
+      case 'My Exchanges':
+        page = const RequestsScreen();
+        break;
+      case 'Notifications':
+        page = const NotificationsScreen();
+        break;
+      case 'Saved Items':
+        page = const SavedItemsScreen();
+        break;
+      case 'Impact History':
+        page = const ImpactScreen();
+        break;
+      case 'Settings':
+        page = const SettingsScreen();
+        break;
+    }
+
+    if (page != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => page!),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const SafeArea(
+        child: Center(
+          child: Text(
+            'Please login again.',
+            style: TextStyle(fontSize: 18, color: muted),
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots(),
+        builder: (context, userSnapshot) {
+          if (userSnapshot.hasError) {
+            return const Center(
+              child: Text(
+                'Unable to load profile.',
+                style: TextStyle(fontSize: 17, color: muted),
+              ),
+            );
+          }
+
+          return FutureBuilder<Map<String, dynamic>>(
+            future: _loadProfileStats(user.uid),
+            builder: (context, statsSnapshot) {
+              if (statsSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: green),
+                );
+              }
+
+              final stats = statsSnapshot.data ?? <String, dynamic>{};
+
+              final firestoreData = userSnapshot.data?.data() ?? {};
+              final name = (firestoreData['name'] ??
+                  stats['name'] ??
+                  user.displayName ??
+                  'ReLoop Student')
+                  .toString()
+                  .trim();
+
+              final email = (firestoreData['email'] ??
+                  stats['email'] ??
+                  user.email ??
+                  '')
+                  .toString()
+                  .trim();
+
+              final college = (firestoreData['college'] ??
+                  stats['college'] ??
+                  '')
+                  .toString()
+                  .trim();
+
+              final department = (firestoreData['department'] ??
+                  stats['department'] ??
+                  '')
+                  .toString()
+                  .trim();
+
+              final subtitleParts = <String>[];
+              if (department.isNotEmpty) subtitleParts.add(department);
+              if (college.isNotEmpty) subtitleParts.add(college);
+
+              final subtitle = subtitleParts.isEmpty
+                  ? 'Verified Student ✓'
+                  : '${subtitleParts.join(' • ')} • Verified Student ✓';
+
+              final listings = stats['listings'] ?? 0;
+              final reuses = stats['reuses'] ?? 0;
+              final ecoPoints = stats['ecoPoints'] ?? 0;
+              final exchanges = stats['exchanges'] ?? 0;
+              final donations = stats['donations'] ?? 0;
+
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
+                children: [
+                  const AppHeader(),
+                  const SizedBox(height: 50),
+
+                  const Center(
+                    child: CircleAvatar(
+                      radius: 55,
+                      backgroundColor: lightGreen,
+                      child: Icon(
+                        Icons.person,
+                        size: 65,
+                        color: green,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Text(
+                    name.isEmpty ? 'ReLoop Student' : name,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: ink,
+                    ),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: muted,
+                      fontSize: 16,
+                    ),
+                  ),
+
+                  if (email.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      email,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: muted,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 35),
+
+                  Container(
+                    padding: const EdgeInsets.all(25),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(25),
+                      border: Border.all(color: border),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        ProfileStat('$listings', 'Listings'),
+                        ProfileStat('$reuses', 'Reuses'),
+                        ProfileStat('$ecoPoints', 'Eco Points'),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: lightGreen,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFB8EAC4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.sync_alt_rounded, color: green),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '$exchanges exchange${exchanges == 1 ? '' : 's'} • '
+                                '$donations donation${donations == 1 ? '' : 's'}',
+                            style: const TextStyle(
+                              color: green,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 25),
+
+                  ...[
+                    ('My Listings', Icons.inventory_2_outlined),
+                    ('Messages', Icons.chat_bubble_outline_rounded),
+                    ('My Exchanges', Icons.sync_alt),
+                    ('Saved Items', Icons.bookmark_border),
+                    ('Impact History', Icons.history),
+                    ('Notifications', Icons.notifications_none),
+                    ('Settings', Icons.settings_outlined),
+                  ].map(
+                        (e) => ListTile(
+                      contentPadding:
+                      const EdgeInsets.symmetric(vertical: 3),
+                      leading: Icon(e.$2, color: green),
+                      title: Text(
+                        e.$1,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openPage(context, e.$1),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool notificationsEnabled = true;
+  bool loading = true;
+
+  User? get user => FirebaseAuth.instance.currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final currentUser = user;
+    if (currentUser == null) {
+      if (mounted) setState(() => loading = false);
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+      final data = doc.data() ?? <String, dynamic>{};
+      if (mounted) {
+        setState(() {
+          notificationsEnabled = data['notificationsEnabled'] != false;
+          loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _setNotifications(bool value) async {
+    final currentUser = user;
+    if (currentUser == null) return;
+
+    setState(() => notificationsEnabled = value);
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .update({'notificationsEnabled': value});
+    } catch (_) {
+      if (mounted) {
+        setState(() => notificationsEnabled = !value);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update notification setting.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAccountInfo() async {
+    final currentUser = user;
+    if (currentUser == null) return;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
+    final data = doc.data() ?? <String, dynamic>{};
+
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Account Information'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SettingInfoRow('Name', '${data['name'] ?? currentUser.displayName ?? 'Student'}'),
+            _SettingInfoRow('Email', '${data['email'] ?? currentUser.email ?? ''}'),
+            _SettingInfoRow('College', '${data['college'] ?? 'Not added'}'),
+            _SettingInfoRow('Department', '${data['department'] ?? 'Not added'}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _signOut() async {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text('You will need to sign in again to access ReLoop.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSignOut != true) return;
+
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = user;
+
+    if (currentUser == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please login again.')),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(color: green))
+          : ListView(
+        padding: const EdgeInsets.fromLTRB(22, 10, 22, 30),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  radius: 28,
+                  backgroundColor: lightGreen,
+                  child: Icon(Icons.person, color: green, size: 30),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        currentUser.email ?? 'Student account',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('Verified ReLoop account', style: TextStyle(color: muted)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: muted)),
+          const SizedBox(height: 8),
+          _SettingsTile(
+            icon: Icons.person_outline,
+            title: 'Account Information',
+            subtitle: 'View your profile details',
+            onTap: _showAccountInfo,
+          ),
+          const SizedBox(height: 10),
+          const Text('Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: muted)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: border),
+            ),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.notifications_outlined, color: green),
+              title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(notificationsEnabled ? 'Request, exchange and chat updates' : 'Notifications are turned off'),
+              value: notificationsEnabled,
+              activeColor: green,
+              onChanged: _setNotifications,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('Session', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: muted)),
+          const SizedBox(height: 8),
+          _SettingsTile(
+            icon: Icons.logout_rounded,
+            title: 'Sign out',
+            subtitle: 'Sign out from this account',
+            destructive: true,
+            onTap: _signOut,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = destructive ? Colors.red.shade700 : green;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: destructive ? Colors.red.shade700 : ink)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _SettingInfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SettingInfoRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: muted)),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );
