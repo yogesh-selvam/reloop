@@ -510,10 +510,13 @@ class _MainShellState extends State<MainShell> {
 
 class AppHeader extends StatelessWidget {
   final bool avatar;
+
   const AppHeader({super.key, this.avatar = true});
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Row(
       children: [
         if (avatar)
@@ -523,9 +526,87 @@ class AppHeader extends StatelessWidget {
             child: const Icon(Icons.person, color: green),
           ),
         if (avatar) const SizedBox(width: 12),
-        const Text('ReLoop', style: TextStyle(fontSize: 31, fontWeight: FontWeight.w800, color: green)),
+        const Text(
+          'ReLoop',
+          style: TextStyle(
+            fontSize: 31,
+            fontWeight: FontWeight.w800,
+            color: green,
+          ),
+        ),
         const Spacer(),
-        const Icon(Icons.notifications_none_rounded, size: 32, color: muted),
+        if (user == null)
+          const Icon(
+            Icons.notifications_none_rounded,
+            size: 32,
+            color: muted,
+          )
+        else
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .collection('notifications')
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final unreadCount = snapshot.data?.docs.length ?? 0;
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    tooltip: 'Notifications',
+                    icon: const Icon(
+                      Icons.notifications_none_rounded,
+                      size: 32,
+                      color: muted,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: 3,
+                      top: 1,
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade600,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                        ),
+                        child: Text(
+                          unreadCount > 99 ? '99+' : '$unreadCount',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
       ],
     );
   }
@@ -992,7 +1073,7 @@ class ListingDetailsScreen extends StatelessWidget {
         return;
       }
 
-      await FirebaseFirestore.instance.collection('requests').add({
+      final requestRef = await FirebaseFirestore.instance.collection('requests').add({
         'listingId': listingId,
         'listingTitle': listingTitle,
         'requesterId': user.uid,
@@ -1005,6 +1086,16 @@ class ListingDetailsScreen extends StatelessWidget {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      if (sellerId.isNotEmpty) {
+        await NotificationService.requestReceived(
+          sellerId: sellerId,
+          requesterEmail: user.email ?? 'A student',
+          listingTitle: listingTitle,
+          requestId: requestRef.id,
+          listingId: listingId,
+        );
+      }
 
       if (!context.mounted) return;
 
@@ -2058,6 +2149,123 @@ class ChartPainter extends CustomPainter {
 }
 
 
+class NotificationService {
+  static CollectionReference<Map<String, dynamic>> _userNotifications(String uid) {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('notifications');
+  }
+
+  static Future<void> create({
+    required String uid,
+    required String type,
+    required String title,
+    required String message,
+    String? requestId,
+    String? chatId,
+    String? listingId,
+  }) async {
+    if (uid.isEmpty) return;
+
+    await _userNotifications(uid).add({
+      'type': type,
+      'title': title,
+      'message': message,
+      'isRead': false,
+      'requestId': requestId ?? '',
+      'chatId': chatId ?? '',
+      'listingId': listingId ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Future<void> requestReceived({
+    required String sellerId,
+    required String requesterEmail,
+    required String listingTitle,
+    required String requestId,
+    required String listingId,
+  }) async {
+    await create(
+      uid: sellerId,
+      type: 'request_received',
+      title: 'New Request',
+      message: '$requesterEmail requested "$listingTitle".',
+      requestId: requestId,
+      listingId: listingId,
+    );
+  }
+
+  static Future<void> requestStatusChanged({
+    required String requesterId,
+    required String listingTitle,
+    required String requestId,
+    required String listingId,
+    required bool accepted,
+  }) async {
+    await create(
+      uid: requesterId,
+      type: accepted ? 'request_accepted' : 'request_rejected',
+      title: accepted ? 'Request Accepted' : 'Request Rejected',
+      message: accepted
+          ? 'Your request for "$listingTitle" was accepted by the seller.'
+          : 'Your request for "$listingTitle" was rejected by the seller.',
+      requestId: requestId,
+      listingId: listingId,
+    );
+  }
+
+  static Future<void> exchangeStarted({
+    required String uid,
+    required String listingTitle,
+    required String requestId,
+    required String listingId,
+  }) async {
+    await create(
+      uid: uid,
+      type: 'exchange_started',
+      title: 'Exchange Started',
+      message: 'The exchange for "$listingTitle" is now in progress.',
+      requestId: requestId,
+      listingId: listingId,
+    );
+  }
+
+  static Future<void> completionConfirmed({
+    required String uid,
+    required String listingTitle,
+    required String requestId,
+    required String listingId,
+  }) async {
+    await create(
+      uid: uid,
+      type: 'exchange_completed',
+      title: 'Exchange Completed',
+      message: 'The exchange for "$listingTitle" has been completed successfully.',
+      requestId: requestId,
+      listingId: listingId,
+    );
+  }
+
+  static Future<void> newMessage({
+    required String uid,
+    required String senderName,
+    required String message,
+    required String chatId,
+    String? listingId,
+  }) async {
+    await create(
+      uid: uid,
+      type: 'new_message',
+      title: 'New Message',
+      message: '$senderName: $message',
+      chatId: chatId,
+      listingId: listingId,
+    );
+  }
+}
+
 class RequestsScreen extends StatefulWidget {
   const RequestsScreen({super.key});
 
@@ -2089,12 +2297,30 @@ class _RequestsScreenState extends State<RequestsScreen>
       ) async {
     if (_updating) return;
 
+    final data = doc.data() ?? <String, dynamic>{};
+    final requesterId = (data['requesterId'] ?? '').toString();
+    final listingTitle = (data['listingTitle'] ?? 'Untitled listing').toString();
+    final listingId = (data['listingId'] ?? '').toString();
+    final previousStatus = (data['status'] ?? 'pending').toString();
+
+    if (previousStatus != 'pending') return;
+
     setState(() => _updating = true);
     try {
       await doc.reference.update({
         'status': status,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      if (requesterId.isNotEmpty) {
+        await NotificationService.requestStatusChanged(
+          requesterId: requesterId,
+          listingTitle: listingTitle,
+          requestId: doc.id,
+          listingId: listingId,
+          accepted: status == 'accepted',
+        );
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2596,12 +2822,28 @@ class _ExchangeDetailsScreenState extends State<ExchangeDetailsScreen> {
     if (_busy) return;
     setState(() => _busy = true);
 
+    final user = FirebaseAuth.instance.currentUser;
+    final requesterId = (data['requesterId'] ?? '').toString();
+    final sellerId = (data['sellerId'] ?? '').toString();
+    final otherUserId = user?.uid == requesterId ? sellerId : requesterId;
+    final listingTitle = (data['listingTitle'] ?? 'Untitled listing').toString();
+    final listingId = (data['listingId'] ?? '').toString();
+
     try {
       await _requestRef.update({
         'status': 'in_progress',
         'startedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      if (otherUserId.isNotEmpty && otherUserId != user?.uid) {
+        await NotificationService.exchangeStarted(
+          uid: otherUserId,
+          listingTitle: listingTitle,
+          requestId: widget.requestId,
+          listingId: listingId,
+        );
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2623,6 +2865,12 @@ class _ExchangeDetailsScreenState extends State<ExchangeDetailsScreen> {
 
     setState(() => _busy = true);
 
+    bool exchangeCompleted = false;
+    String requesterId = '';
+    String sellerId = '';
+    String listingTitle = 'Untitled listing';
+    String listingId = '';
+
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final snapshot = await transaction.get(_requestRef);
@@ -2635,8 +2883,10 @@ class _ExchangeDetailsScreenState extends State<ExchangeDetailsScreen> {
         }
 
         final current = snapshot.data() ?? <String, dynamic>{};
-        final requesterId = (current['requesterId'] ?? '').toString();
-        final sellerId = (current['sellerId'] ?? '').toString();
+        requesterId = (current['requesterId'] ?? '').toString();
+        sellerId = (current['sellerId'] ?? '').toString();
+        listingTitle = (current['listingTitle'] ?? 'Untitled listing').toString();
+        listingId = (current['listingId'] ?? '').toString();
         final currentStatus = (current['status'] ?? '').toString();
 
         if (currentStatus != 'in_progress' && currentStatus != 'accepted') {
@@ -2659,25 +2909,62 @@ class _ExchangeDetailsScreenState extends State<ExchangeDetailsScreen> {
         final sellerCompleted =
             (current['sellerCompleted'] ?? false) == true || isSeller;
 
+        exchangeCompleted = requesterCompleted && sellerCompleted;
+
         final updates = <String, dynamic>{
-          'status': requesterCompleted && sellerCompleted
-              ? 'completed'
-              : 'in_progress',
+          'status': exchangeCompleted ? 'completed' : 'in_progress',
           'requesterCompleted': requesterCompleted,
           'sellerCompleted': sellerCompleted,
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        if (requesterCompleted && sellerCompleted) {
+        if (exchangeCompleted) {
           updates['completedAt'] = FieldValue.serverTimestamp();
         }
 
         transaction.update(_requestRef, updates);
       });
 
+      if (exchangeCompleted) {
+        if (requesterId.isNotEmpty) {
+          await NotificationService.completionConfirmed(
+            uid: requesterId,
+            listingTitle: listingTitle,
+            requestId: widget.requestId,
+            listingId: listingId,
+          );
+        }
+        if (sellerId.isNotEmpty && sellerId != requesterId) {
+          await NotificationService.completionConfirmed(
+            uid: sellerId,
+            listingTitle: listingTitle,
+            requestId: widget.requestId,
+            listingId: listingId,
+          );
+        }
+      } else {
+        final otherUserId = user.uid == requesterId ? sellerId : requesterId;
+        if (otherUserId.isNotEmpty) {
+          await NotificationService.create(
+            uid: otherUserId,
+            type: 'exchange_completed',
+            title: 'Completion Confirmed',
+            message: 'The other participant confirmed the handover for "$listingTitle".',
+            requestId: widget.requestId,
+            listingId: listingId,
+          );
+        }
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Your completion has been recorded.')),
+        SnackBar(
+          content: Text(
+            exchangeCompleted
+                ? 'Exchange completed successfully.'
+                : 'Your completion has been recorded.',
+          ),
+        ),
       );
     } on FirebaseException catch (e) {
       if (!mounted) return;
@@ -3439,6 +3726,13 @@ class _ChatScreenState extends State<ChatScreen> {
         'lastMessage': text,
         'lastSenderId': user.uid,
       });
+
+      await NotificationService.newMessage(
+        uid: widget.otherUserId,
+        senderName: user.email ?? 'Student',
+        message: text,
+        chatId: widget.chatId,
+      );
     } on FirebaseException catch (e) {
       messageController.text = text;
       if (!mounted) return;
@@ -3619,6 +3913,366 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+class NotificationsScreen extends StatelessWidget {
+  const NotificationsScreen({super.key});
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'request_received':
+        return Icons.mark_email_unread_outlined;
+      case 'request_accepted':
+        return Icons.check_circle_outline_rounded;
+      case 'request_rejected':
+        return Icons.cancel_outlined;
+      case 'exchange_started':
+        return Icons.sync_alt_rounded;
+      case 'exchange_completed':
+        return Icons.handshake_outlined;
+      case 'new_message':
+        return Icons.chat_bubble_outline_rounded;
+      default:
+        return Icons.notifications_none_rounded;
+    }
+  }
+
+  Color _colorForType(String type) {
+    switch (type) {
+      case 'request_received':
+        return const Color(0xFFE8EDFC);
+      case 'request_accepted':
+        return lightGreen;
+      case 'request_rejected':
+        return const Color(0xFFFFE8E8);
+      case 'exchange_started':
+        return const Color(0xFFE8EDFC);
+      case 'exchange_completed':
+        return const Color(0xFFE8F7EF);
+      case 'new_message':
+        return const Color(0xFFEAF1EA);
+      default:
+        return const Color(0xFFF1F3F1);
+    }
+  }
+
+  String _timeText(dynamic value) {
+    if (value is! Timestamp) return 'Just now';
+
+    final difference = DateTime.now().difference(value.toDate());
+
+    if (difference.inSeconds < 60) return 'Just now';
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} min ago';
+    }
+    if (difference.inHours < 24) {
+      return '${difference.inHours} hr ago';
+    }
+    if (difference.inDays < 7) {
+      return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+    }
+
+    final date = value.toDate();
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Future<void> _markAllAsRead(
+      BuildContext context,
+      String uid,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) async {
+    final unreadDocs = docs.where((doc) {
+      final data = doc.data();
+      return data['isRead'] != true;
+    }).toList();
+
+    if (unreadDocs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All notifications are already read.')),
+      );
+      return;
+    }
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final doc in unreadDocs) {
+      batch.update(doc.reference, {'isRead': true});
+    }
+
+    await batch.commit();
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All notifications marked as read.')),
+    );
+  }
+
+  Future<void> _markAsRead(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
+    if (doc.data()['isRead'] == true) return;
+
+    await doc.reference.update({
+      'isRead': true,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text('Please log in to view notifications.'),
+        ),
+      );
+    }
+
+    final uid = user.uid;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FF),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: ink,
+        elevation: 0,
+        title: const Text(
+          'Notifications',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        actions: [
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('notifications')
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final unread = snapshot.data?.docs.length ?? 0;
+
+              return TextButton(
+                onPressed: unread == 0
+                    ? null
+                    : () async {
+                  final all = await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .collection('notifications')
+                      .get();
+
+                  if (!context.mounted) return;
+
+                  await _markAllAsRead(
+                    context,
+                    uid,
+                    all.docs,
+                  );
+                },
+                child: const Text(
+                  'Mark all read',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('notifications')
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(30),
+                child: Text(
+                  'Unable to load notifications.\nPlease check your Firestore rules and index.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 16,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: green),
+            );
+          }
+
+          final docs = snapshot.data?.docs ?? [];
+
+          if (docs.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 35),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: const BoxDecoration(
+                        color: lightGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.notifications_none_rounded,
+                        color: green,
+                        size: 48,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'No notifications yet',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Request, exchange and chat updates will appear here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: muted,
+                        fontSize: 16,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final doc = docs[index];
+              final data = doc.data();
+
+              final title = (data['title'] ?? 'ReLoop Update').toString();
+              final message = (data['message'] ?? '').toString();
+              final type = (data['type'] ?? '').toString();
+              final isRead = data['isRead'] == true;
+              final time = _timeText(data['createdAt']);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: isRead ? Colors.white : const Color(0xFFF1FBF4),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: isRead
+                        ? border
+                        : const Color(0xFFB8EAC4),
+                    width: isRead ? 1 : 1.5,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () => _markAsRead(doc),
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: _colorForType(type),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            _iconForType(type),
+                            color: green,
+                            size: 27,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                        color: ink,
+                                      ),
+                                    ),
+                                  ),
+                                  if (!isRead)
+                                    Container(
+                                      width: 9,
+                                      height: 9,
+                                      margin: const EdgeInsets.only(
+                                        left: 8,
+                                        top: 6,
+                                      ),
+                                      decoration: const BoxDecoration(
+                                        color: green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 7),
+                              Text(
+                                message,
+                                style: const TextStyle(
+                                  color: muted,
+                                  fontSize: 15,
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 9),
+                              Text(
+                                time,
+                                style: const TextStyle(
+                                  color: muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
   @override
@@ -3677,6 +4331,13 @@ class ProfileScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const RequestsScreen(),
+                  ),
+                );
+              } else if (e.$1 == 'Notifications') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
                   ),
                 );
               }
