@@ -4785,6 +4785,313 @@ class SavedItemsScreen extends StatelessWidget {
   }
 }
 
+
+class SellerDashboardScreen extends StatelessWidget {
+  const SellerDashboardScreen({super.key});
+
+  Future<Map<String, int>> _loadStats(String uid) async {
+    final firestore = FirebaseFirestore.instance;
+
+    final results = await Future.wait([
+      firestore
+          .collection('listings')
+          .where('sellerId', isEqualTo: uid)
+          .get(),
+      firestore
+          .collection('requests')
+          .where('sellerId', isEqualTo: uid)
+          .get(),
+    ]);
+
+    final listingSnapshot =
+    results[0] as QuerySnapshot<Map<String, dynamic>>;
+    final requestSnapshot =
+    results[1] as QuerySnapshot<Map<String, dynamic>>;
+
+    int activeListings = 0;
+    int pendingRequests = 0;
+    int completedExchanges = 0;
+
+    for (final doc in listingSnapshot.docs) {
+      final status =
+      (doc.data()['status'] ?? 'active').toString().toLowerCase();
+
+      if (status != 'inactive' &&
+          status != 'deleted' &&
+          status != 'completed') {
+        activeListings++;
+      }
+    }
+
+    for (final doc in requestSnapshot.docs) {
+      final status =
+      (doc.data()['status'] ?? 'pending').toString().toLowerCase();
+
+      if (status == 'pending') {
+        pendingRequests++;
+      } else if (status == 'completed') {
+        completedExchanges++;
+      }
+    }
+
+    return {
+      'totalListings': listingSnapshot.docs.length,
+      'activeListings': activeListings,
+      'pendingRequests': pendingRequests,
+      'completedExchanges': completedExchanges,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text('Please login to view your seller dashboard.'),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Seller Dashboard',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        centerTitle: true,
+      ),
+      body: FutureBuilder<Map<String, int>>(
+        future: _loadStats(user.uid),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: green),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Unable to load dashboard.\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+
+          final stats = snapshot.data ?? const <String, int>{};
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+            children: [
+              const Text(
+                'Your ReLoop activity',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Manage your listings and exchanges in one place.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF687169),
+                ),
+              ),
+              const SizedBox(height: 26),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                childAspectRatio: 1.35,
+                children: [
+                  _DashboardStatCard(
+                    icon: Icons.inventory_2_outlined,
+                    title: 'Total Listings',
+                    value: '${stats['totalListings'] ?? 0}',
+                  ),
+                  _DashboardStatCard(
+                    icon: Icons.check_circle_outline,
+                    title: 'Active Listings',
+                    value: '${stats['activeListings'] ?? 0}',
+                  ),
+                  _DashboardStatCard(
+                    icon: Icons.pending_actions_outlined,
+                    title: 'Pending Requests',
+                    value: '${stats['pendingRequests'] ?? 0}',
+                  ),
+                  _DashboardStatCard(
+                    icon: Icons.swap_horizontal_circle_outlined,
+                    title: 'Completed',
+                    value: '${stats['completedExchanges'] ?? 0}',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              const Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _DashboardActionButton(
+                icon: Icons.inventory_2_outlined,
+                title: 'My Listings',
+                subtitle: 'View and manage your listings',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MyListingsScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _DashboardActionButton(
+                icon: Icons.sync_alt_rounded,
+                title: 'My Exchanges',
+                subtitle: 'View incoming and outgoing requests',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RequestsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DashboardStatCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+
+  const _DashboardStatCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFD9E2D9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 30, color: green),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF687169),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardActionButton extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _DashboardActionButton({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFD9E2D9)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7ED),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(icon, color: green),
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF687169),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
@@ -4839,6 +5146,9 @@ class ProfileScreen extends StatelessWidget {
     Widget? page;
 
     switch (title) {
+      case 'Seller Dashboard':
+        page = const SellerDashboardScreen();
+        break;
       case 'My Listings':
         page = const MyListingsScreen();
         break;
@@ -5056,6 +5366,7 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(height: 25),
 
                   ...[
+                    ('Seller Dashboard', Icons.dashboard_outlined),
                     ('My Listings', Icons.inventory_2_outlined),
                     ('Messages', Icons.chat_bubble_outline_rounded),
                     ('My Exchanges', Icons.sync_alt),
