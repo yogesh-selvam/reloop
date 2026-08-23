@@ -1,0 +1,205 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ============================================================
+    // LISTINGS
+    // ============================================================
+
+    match /listings/{listingId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.sellerId == request.auth.uid;
+
+      allow update, delete: if signedIn()
+        && resource.data.sellerId == request.auth.uid;
+    }
+
+
+    // ============================================================
+    // REQUESTS
+    // ============================================================
+
+    match /requests/{requestId} {
+
+      // Requester or seller can read
+      allow read: if signedIn()
+        && (
+          resource.data.requesterId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid
+        );
+
+      // Student can create only their own request
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.sellerId != request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Requester or seller can update
+      allow update: if signedIn()
+        && (
+          resource.data.requesterId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid
+        );
+
+      // Requester or seller can delete
+      allow delete: if signedIn()
+        && (
+          resource.data.requesterId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid
+        );
+    }
+
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{userId} {
+
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.auth.uid == userId;
+
+      allow update: if signedIn()
+        && request.auth.uid == userId;
+
+
+      // ==========================================================
+      // NOTIFICATIONS
+      // Path:
+      // users/{userId}/notifications/{notificationId}
+      // ==========================================================
+
+      match /notifications/{notificationId} {
+
+        // User can read only their own notifications
+        allow read: if signedIn()
+          && request.auth.uid == userId;
+
+        // Signed-in users can create notifications
+        // for another user's notification collection.
+        allow create: if signedIn();
+
+        // Only notification owner can mark as read/update
+        allow update: if signedIn()
+          && request.auth.uid == userId;
+
+        // Only notification owner can delete
+        allow delete: if signedIn()
+          && request.auth.uid == userId;
+      }
+    }
+
+
+    // ============================================================
+    // REPORTS
+    // ============================================================
+
+    match /reports/{reportId} {
+
+      // A signed-in user can create a report only for themselves.
+      // Reports must start in pending state.
+      allow create: if signedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // A user can read only reports submitted by themselves.
+      // This is needed by the app to prevent duplicate reports.
+      allow read: if signedIn()
+        && resource.data.reporterId == request.auth.uid;
+
+      // Normal users cannot modify or delete reports.
+      allow update, delete: if false;
+    }
+
+
+    // ============================================================
+    // CHAT
+    // ============================================================
+
+    match /chats/{chatId} {
+
+      // Only participants can read chat
+      allow read: if signedIn()
+        && (
+          resource.data.participant1Id == request.auth.uid ||
+          resource.data.participant2Id == request.auth.uid
+        );
+
+      // A participant can create the chat
+      allow create: if signedIn()
+        && (
+          request.resource.data.participant1Id == request.auth.uid ||
+          request.resource.data.participant2Id == request.auth.uid
+        );
+
+      // Only participants can update
+      allow update: if signedIn()
+        && (
+          resource.data.participant1Id == request.auth.uid ||
+          resource.data.participant2Id == request.auth.uid
+        );
+
+      // Only participants can delete
+      allow delete: if signedIn()
+        && (
+          resource.data.participant1Id == request.auth.uid ||
+          resource.data.participant2Id == request.auth.uid
+        );
+
+
+      // ==========================================================
+      // CHAT MESSAGES
+      // ==========================================================
+
+      match /messages/{messageId} {
+
+        // Only chat participants can read messages
+        allow read: if signedIn()
+          && (
+            get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participant1Id == request.auth.uid
+            ||
+            get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participant2Id == request.auth.uid
+          );
+
+        // Only participant can send message
+        // and senderId must match logged-in user
+        allow create: if signedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && (
+            get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participant1Id == request.auth.uid
+            ||
+            get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participant2Id == request.auth.uid
+          );
+
+        // Only participants can update/delete messages
+        allow update, delete: if signedIn()
+          && (
+            get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participant1Id == request.auth.uid
+            ||
+            get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participant2Id == request.auth.uid
+          );
+      }
+    }
+  }
+}
