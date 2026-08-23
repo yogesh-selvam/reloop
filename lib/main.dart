@@ -1000,6 +1000,7 @@ class ListingDetailsScreen extends StatelessWidget {
         'sellerId': sellerId,
         'sellerName': (data['sellerName'] ?? 'ReLoop Student').toString(),
         'listingType': (data['listingType'] ?? 'Sell').toString(),
+        'category': (data['category'] ?? 'Other').toString(),
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -1782,84 +1783,233 @@ class ItemIllustration extends StatelessWidget {
 class ImpactScreen extends StatelessWidget {
   const ImpactScreen({super.key});
 
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _completedExchanges(
+      String uid,
+      ) async {
+    final requester = await FirebaseFirestore.instance
+        .collection('requests')
+        .where('requesterId', isEqualTo: uid)
+        .where('status', isEqualTo: 'completed')
+        .get();
+
+    final seller = await FirebaseFirestore.instance
+        .collection('requests')
+        .where('sellerId', isEqualTo: uid)
+        .where('status', isEqualTo: 'completed')
+        .get();
+
+    final unique = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final doc in requester.docs) {
+      unique[doc.id] = doc;
+    }
+    for (final doc in seller.docs) {
+      unique[doc.id] = doc;
+    }
+    return unique.values.toList();
+  }
+
+  double _co2ForCategory(String? category) {
+    switch (category) {
+      case 'Books':
+        return 1.2;
+      case 'Electronics':
+        return 4.5;
+      case 'Bags':
+        return 2.1;
+      case 'Stationery':
+        return 0.5;
+      case 'Furniture':
+        return 8.0;
+      default:
+        return 1.0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const SafeArea(
+        child: Center(child: Text('Please login to view your impact.')),
+      );
+    }
+
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
-        children: [
-          const AppHeader(),
-          const SizedBox(height: 45),
-          const Text('Your Impact 🌱', style: TextStyle(fontSize: 37, fontWeight: FontWeight.w800, color: ink)),
-          const SizedBox(height: 10),
-          const Text('Track your environmental contributions.', style: TextStyle(fontSize: 19, color: muted)),
-          const SizedBox(height: 38),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 55, horizontal: 25),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1FFF4),
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: const Color(0xFFB8D4BF)),
-            ),
-            child: Column(
-              children: [
-                const Text('12.8 kg', style: TextStyle(fontSize: 61, fontWeight: FontWeight.w800, color: ink)),
-                const SizedBox(height: 8),
-                const Text('Estimated CO₂ saved', style: TextStyle(fontSize: 23, color: green, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 25),
-                Container(
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(color: const Color(0xFFC7EBD2), borderRadius: BorderRadius.circular(20)),
-                  child: const Row(
-                    children: [
-                      CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.directions_car_filled_outlined, color: muted)),
-                      SizedBox(width: 18),
-                      Expanded(child: Text("That's approximately equivalent to avoiding 52 km of car travel.", style: TextStyle(fontSize: 17, color: muted, height: 1.35))),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 30),
-          const Row(children: [
-            Expanded(child: StatCard(number: '8', label: 'Items Reused', icon: Icons.eco_outlined)),
-            SizedBox(width: 18),
-            Expanded(child: StatCard(number: '5', label: 'Exchanges', icon: Icons.sync_alt_rounded)),
-          ]),
-          const SizedBox(height: 18),
-          const Row(children: [
-            Expanded(child: StatCard(number: '2', label: 'Donations', icon: Icons.volunteer_activism_outlined)),
-            SizedBox(width: 18),
-            Expanded(child: StatCard(number: '420', label: 'Eco Points', icon: Icons.eco)),
-          ]),
-          const SizedBox(height: 30),
-          Container(
-            height: 280,
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), border: Border.all(color: border)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Row(children: [
-                Icon(Icons.bar_chart_rounded, color: muted),
-                SizedBox(width: 12),
-                Text('Your Reuse Journey', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ink)),
-              ]),
-              const SizedBox(height: 25),
-              Expanded(
-                child: CustomPaint(
-                  painter: ChartPainter(),
-                  child: const SizedBox.expand(),
+      child: FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+        future: _completedExchanges(user.uid),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: green));
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(30),
+                child: Text(
+                  'Unable to load impact right now.\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: muted),
                 ),
               ),
-              const Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-                Text('M'), Text('T'), Text('W'), Text('T'), Text('F'), Text('S'), Text('S'),
-              ]),
-            ]),
-          ),
-        ],
+            );
+          }
+
+          final completed = snapshot.data ?? [];
+          final exchangeCount = completed.length;
+          final reusedCount = exchangeCount;
+          final co2 = completed.fold<double>(
+            0,
+                (sum, doc) => sum + _co2ForCategory(
+              (doc.data()['category'] ?? 'Other').toString(),
+            ),
+          );
+          final ecoPoints = exchangeCount * 50;
+          final co2Text = co2 == co2.roundToDouble()
+              ? co2.toInt().toString()
+              : co2.toStringAsFixed(1);
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
+            children: [
+              const AppHeader(),
+              const SizedBox(height: 45),
+              const Text(
+                'Your Impact 🌱',
+                style: TextStyle(fontSize: 37, fontWeight: FontWeight.w800, color: ink),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Your completed exchanges are now counted here.',
+                style: TextStyle(fontSize: 19, color: muted),
+              ),
+              const SizedBox(height: 38),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 55, horizontal: 25),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1FFF4),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: const Color(0xFFB8D4BF)),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '$co2Text kg',
+                      style: const TextStyle(fontSize: 61, fontWeight: FontWeight.w800, color: ink),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Estimated CO₂ saved',
+                      style: TextStyle(fontSize: 23, color: green, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 25),
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC7EBD2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          const CircleAvatar(
+                            radius: 28,
+                            backgroundColor: Colors.white,
+                            child: Icon(Icons.sync_alt_rounded, color: muted),
+                          ),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Text(
+                              exchangeCount == 0
+                                  ? 'Complete your first exchange to start building your impact.'
+                                  : '$exchangeCount completed exchange${exchangeCount == 1 ? '' : 's'} are contributing to your ReLoop impact.',
+                              style: const TextStyle(fontSize: 17, color: muted, height: 1.35),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
+              Row(
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      number: '$reusedCount',
+                      label: 'Items Reused',
+                      icon: Icons.eco_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: StatCard(
+                      number: '$exchangeCount',
+                      label: 'Exchanges',
+                      icon: Icons.sync_alt_rounded,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      number: '0',
+                      label: 'Donations',
+                      icon: Icons.volunteer_activism_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: StatCard(
+                      number: '$ecoPoints',
+                      label: 'Eco Points',
+                      icon: Icons.eco,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.check_circle_outline, color: green),
+                        SizedBox(width: 12),
+                        Text(
+                          'Exchange Completion',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ink),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      exchangeCount == 0
+                          ? 'Your completed exchanges will appear here automatically.'
+                          : 'Every completed exchange increases your reuse count and estimated environmental impact.',
+                      style: const TextStyle(fontSize: 16, color: muted, height: 1.45),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
+
 }
 
 class StatCard extends StatelessWidget {
@@ -1970,6 +2120,10 @@ class _RequestsScreenState extends State<RequestsScreen>
     switch (status) {
       case 'accepted':
         return 'Accepted';
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
       case 'rejected':
         return 'Rejected';
       default:
@@ -1981,6 +2135,10 @@ class _RequestsScreenState extends State<RequestsScreen>
     switch (status) {
       case 'accepted':
         return green;
+      case 'in_progress':
+        return const Color(0xFF2563EB);
+      case 'completed':
+        return const Color(0xFF047857);
       case 'rejected':
         return Colors.red.shade700;
       default:
@@ -2003,6 +2161,18 @@ class _RequestsScreenState extends State<RequestsScreen>
           fontWeight: FontWeight.w800,
           fontSize: 13,
         ),
+      ),
+    );
+  }
+
+  void _openExchange(
+      BuildContext context,
+      DocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ExchangeDetailsScreen(requestId: doc.id),
       ),
     );
   }
@@ -2123,7 +2293,30 @@ class _RequestsScreenState extends State<RequestsScreen>
                 ),
               ],
             ),
-          ] else if (!incoming && status == 'accepted') ...[
+          ] else if (status == 'accepted' || status == 'in_progress') ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _openExchange(context, doc),
+                icon: Icon(
+                  status == 'accepted'
+                      ? Icons.handshake_outlined
+                      : Icons.sync_alt_rounded,
+                ),
+                label: Text(
+                  status == 'accepted' ? 'Open Exchange' : 'Continue Exchange',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: green,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ] else if (status == 'completed') ...[
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
@@ -2133,11 +2326,11 @@ class _RequestsScreenState extends State<RequestsScreen>
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.check_circle_outline, color: green),
+                  Icon(Icons.verified_outlined, color: green),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'The seller accepted your request.',
+                      'Exchange completed successfully.',
                       style: TextStyle(
                         color: green,
                         fontWeight: FontWeight.w700,
@@ -2310,6 +2503,475 @@ class _RequestsScreenState extends State<RequestsScreen>
           _requestList(incoming: true),
           _requestList(incoming: false),
         ],
+      ),
+    );
+  }
+}
+
+class ExchangeDetailsScreen extends StatefulWidget {
+  final String requestId;
+
+  const ExchangeDetailsScreen({super.key, required this.requestId});
+
+  @override
+  State<ExchangeDetailsScreen> createState() => _ExchangeDetailsScreenState();
+}
+
+class _ExchangeDetailsScreenState extends State<ExchangeDetailsScreen> {
+  bool _busy = false;
+
+  DocumentReference<Map<String, dynamic>> get _requestRef =>
+      FirebaseFirestore.instance.collection('requests').doc(widget.requestId);
+
+  Future<void> _startExchange(Map<String, dynamic> data) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      await _requestRef.update({
+        'status': 'in_progress',
+        'startedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Exchange started. Arrange the handover with the other student.')),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Unable to start exchange.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _markCompleted(Map<String, dynamic> data) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _busy) return;
+
+    setState(() => _busy = true);
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(_requestRef);
+        if (!snapshot.exists) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'not-found',
+            message: 'Exchange request no longer exists.',
+          );
+        }
+
+        final current = snapshot.data() ?? <String, dynamic>{};
+        final requesterId = (current['requesterId'] ?? '').toString();
+        final sellerId = (current['sellerId'] ?? '').toString();
+        final currentStatus = (current['status'] ?? '').toString();
+
+        if (currentStatus != 'in_progress' && currentStatus != 'accepted') {
+          return;
+        }
+
+        final isRequester = requesterId == user.uid;
+        final isSeller = sellerId == user.uid;
+
+        if (!isRequester && !isSeller) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'permission-denied',
+            message: 'You are not part of this exchange.',
+          );
+        }
+
+        final requesterCompleted =
+            (current['requesterCompleted'] ?? false) == true || isRequester;
+        final sellerCompleted =
+            (current['sellerCompleted'] ?? false) == true || isSeller;
+
+        final updates = <String, dynamic>{
+          'status': requesterCompleted && sellerCompleted
+              ? 'completed'
+              : 'in_progress',
+          'requesterCompleted': requesterCompleted,
+          'sellerCompleted': sellerCompleted,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        if (requesterCompleted && sellerCompleted) {
+          updates['completedAt'] = FieldValue.serverTimestamp();
+        }
+
+        transaction.update(_requestRef, updates);
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your completion has been recorded.')),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Unable to update exchange.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _statusTitle(String status) {
+    switch (status) {
+      case 'accepted':
+        return 'Ready to Exchange';
+      case 'in_progress':
+        return 'Exchange in Progress';
+      case 'completed':
+        return 'Exchange Completed';
+      default:
+        return 'Exchange Details';
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'completed':
+        return const Color(0xFF047857);
+      case 'in_progress':
+        return const Color(0xFF2563EB);
+      default:
+        return green;
+    }
+  }
+
+  Widget _step({
+    required int number,
+    required String title,
+    required String subtitle,
+    required bool active,
+    required bool done,
+  }) {
+    final color = done || active ? green : const Color(0xFFB8C2BC);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: done ? green : Colors.white,
+            border: Border.all(color: color, width: 2),
+          ),
+          child: Center(
+            child: done
+                ? const Icon(Icons.check, color: Colors.white, size: 20)
+                : Text(
+              '$number',
+              style: TextStyle(color: color, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: active || done ? ink : muted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: muted, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FF),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F9FF),
+        foregroundColor: ink,
+        elevation: 0,
+        title: const Text(
+          'Exchange Details',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: _requestRef.snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(30),
+                child: Text(
+                  'Unable to load exchange.\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: muted),
+                ),
+              ),
+            );
+          }
+
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator(color: green));
+          }
+
+          final data = snapshot.data!.data() ?? <String, dynamic>{};
+          final title = (data['listingTitle'] ?? 'Untitled listing').toString();
+          final listingType = (data['listingType'] ?? 'Sell').toString();
+          final category = (data['category'] ?? 'Other').toString();
+          final requesterEmail = (data['requesterEmail'] ?? 'Student').toString();
+          final sellerName = (data['sellerName'] ?? 'ReLoop Student').toString();
+          final sellerId = (data['sellerId'] ?? '').toString();
+          final requesterId = (data['requesterId'] ?? '').toString();
+          final status = (data['status'] ?? 'accepted').toString();
+          final userId = FirebaseAuth.instance.currentUser?.uid;
+          final isRequester = userId == requesterId;
+          final myCompleted = isRequester
+              ? (data['requesterCompleted'] ?? false) == true
+              : (data['sellerCompleted'] ?? false) == true;
+          final otherCompleted = isRequester
+              ? (data['sellerCompleted'] ?? false) == true
+              : (data['requesterCompleted'] ?? false) == true;
+
+          final statusColor = _statusColor(status);
+          final inProgress = status == 'in_progress';
+          final completed = status == 'completed';
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(24, 18, 24, 35),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: border),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: lightGreen,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Icon(Icons.handshake_outlined, color: green, size: 34),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: ink),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '$category • $listingType',
+                            style: const TextStyle(color: muted),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(.10),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _statusTitle(status),
+                              style: TextStyle(color: statusColor, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Participants',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ink),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const CircleAvatar(backgroundColor: lightGreen, child: Icon(Icons.person, color: green)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Requester', style: TextStyle(color: muted, fontSize: 13)),
+                              Text(requesterEmail, style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const CircleAvatar(backgroundColor: lightGreen, child: Icon(Icons.storefront_outlined, color: green)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Seller', style: TextStyle(color: muted, fontSize: 13)),
+                              Text(sellerName, style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: border),
+                ),
+                child: Column(
+                  children: [
+                    _step(
+                      number: 1,
+                      title: 'Request accepted',
+                      subtitle: 'Both students can now arrange the handover.',
+                      active: true,
+                      done: true,
+                    ),
+                    const SizedBox(height: 22),
+                    _step(
+                      number: 2,
+                      title: 'Exchange in progress',
+                      subtitle: 'Meet on campus and hand over the item.',
+                      active: inProgress || completed,
+                      done: completed || inProgress,
+                    ),
+                    const SizedBox(height: 22),
+                    _step(
+                      number: 3,
+                      title: 'Exchange completed',
+                      subtitle: 'Both participants confirm the handover.',
+                      active: completed,
+                      done: completed,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              if (!inProgress && !completed)
+                PrimaryButton(
+                  text: _busy ? 'Starting...' : 'Start Exchange',
+                  onTap: _busy ? () {} : () => _startExchange(data),
+                )
+              else if (inProgress && !myCompleted)
+                PrimaryButton(
+                  text: _busy ? 'Saving...' : 'Mark as Completed',
+                  onTap: _busy ? () {} : () => _markCompleted(data),
+                )
+              else if (inProgress && myCompleted)
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: lightGreen,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline, color: green),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            otherCompleted
+                                ? 'Both participants confirmed. Completing exchange...'
+                                : 'You confirmed completion. Waiting for the other participant.',
+                            style: const TextStyle(color: green, fontWeight: FontWeight.w700, height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: lightGreen,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.verified_outlined, color: green),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Exchange completed. This reuse now counts toward your impact.',
+                            style: TextStyle(color: green, fontWeight: FontWeight.w700, height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F6FF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFD9E2FF)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, color: green),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Only mark the exchange as completed after the item has actually been handed over. Both participants must confirm completion.',
+                        style: TextStyle(color: muted, height: 1.45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
