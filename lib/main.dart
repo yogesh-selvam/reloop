@@ -1,9 +1,11 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'features/listings/my_listings_screen.dart';
+import 'features/auth/signup_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -306,7 +308,34 @@ class _LoginScreenState extends State<LoginScreen> {
                 text: isLoading ? 'Signing in...' : 'Continue',
                 onTap: isLoading ? () {} : login,
               ),
-              const SizedBox(height: 42),
+
+              const SizedBox(height: 24),
+
+              Center(
+                child: TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SignupScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'New to ReLoop? Create Account',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: green,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 18),
+
               Row(
                 children: [
                   Expanded(child: Divider(color: Colors.grey.shade300)),
@@ -508,146 +537,187 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('listings')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          final docs = snapshot.data?.docs ?? [];
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(30, 18, 30, 20),
-            children: [
-              const AppHeader(),
-              const SizedBox(height: 40),
-              const Text(
-                'Good morning, Arun 👋',
-                style: TextStyle(
-                  fontSize: 35,
-                  fontWeight: FontWeight.w800,
-                  color: ink,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Make your next purchase a reuse.',
-                style: TextStyle(fontSize: 19, color: muted),
-              ),
-              const SizedBox(height: 30),
-              const SearchBox(),
-              const SizedBox(height: 28),
-              const ImpactCard(),
-              const SizedBox(height: 34),
-              const Text(
-                'Categories',
-                style: TextStyle(fontSize: 18, color: muted),
-              ),
-              const SizedBox(height: 13),
-              SizedBox(
-                height: 48,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: const [
-                    CategoryChip(
-                      icon: Icons.menu_book_outlined,
-                      text: 'Books',
-                    ),
-                    CategoryChip(
-                      icon: Icons.devices_outlined,
-                      text: 'Electronics',
-                    ),
-                    CategoryChip(
-                      icon: Icons.backpack_outlined,
-                      text: 'Bags',
-                    ),
-                    CategoryChip(
-                      icon: Icons.edit_outlined,
-                      text: 'Stationery',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                'Listings',
-                style: TextStyle(
-                  fontSize: 29,
-                  fontWeight: FontWeight.w800,
-                  color: ink,
-                ),
-              ),
-              const SizedBox(height: 18),
-
-              if (snapshot.connectionState == ConnectionState.waiting)
-                const Center(child: CircularProgressIndicator())
-              else if (snapshot.hasError)
-                const Text(
-                  'Unable to load listings.',
-                  style: TextStyle(color: muted, fontSize: 17),
-                )
-              else if (docs.isEmpty)
-                  const Text(
-                    'No listings yet. Create the first one!',
-                    style: TextStyle(color: muted, fontSize: 17),
-                  )
-                else
-                  ...docs.map((doc) {
-                    final data = doc.data();
-                    final title = (data['title'] ?? 'Untitled').toString();
-                    final description =
-                    (data['description'] ?? '').toString();
-                    final category =
-                    (data['category'] ?? 'Other').toString();
-                    final condition =
-                    (data['condition'] ?? 'Good').toString();
-                    final listingType =
-                    (data['listingType'] ?? 'Sell').toString();
-                    final price = data['price'];
-
-                    String priceText = 'Free';
-                    if (price is num && price > 0) {
-                      priceText = '₹${price.toStringAsFixed(0)}';
-                    }
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: ProductCard(
-                        title: title,
-                        price: priceText,
-                        condition: condition,
-                        distance: category,
-                        icon: _iconForCategory(category),
-                        impact: listingType == 'Donate'
-                            ? 'Donation'
-                            : description.isEmpty
-                            ? 'Available'
-                            : 'Listed',
-                      ),
-                    );
-                  }),
-            ],
-          );
-        },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
+        children: [
+          const AppHeader(),
+          const SizedBox(height: 40),
+          const Text(
+            'Good morning, Arun 👋',
+            style: TextStyle(fontSize: 35, fontWeight: FontWeight.w800, color: ink),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Make your next purchase a reuse.',
+            style: TextStyle(fontSize: 19, color: muted),
+          ),
+          const SizedBox(height: 30),
+          const SearchBox(),
+          const SizedBox(height: 28),
+          const ImpactCard(),
+          const SizedBox(height: 34),
+          const Text('Categories', style: TextStyle(fontSize: 18, color: muted)),
+          const SizedBox(height: 13),
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: const [
+                CategoryChip(icon: Icons.menu_book_outlined, text: 'Books'),
+                CategoryChip(icon: Icons.devices_outlined, text: 'Electronics'),
+                CategoryChip(icon: Icons.backpack_outlined, text: 'Bags'),
+                CategoryChip(icon: Icons.edit_outlined, text: 'Stationery'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 30),
+          const Text(
+            'Recommended for you',
+            style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800, color: ink),
+          ),
+          const SizedBox(height: 18),
+          const ProductCard(
+            title: 'Java Programming Book',
+            price: '₹120',
+            condition: 'Good condition',
+            distance: '0.5km',
+            icon: Icons.menu_book_rounded,
+            impact: '1.2 kg CO₂ saved',
+          ),
+          const SizedBox(height: 20),
+          const ProductCard(
+            title: 'Wireless Headphones',
+            price: '₹8,500',
+            condition: 'Like New',
+            distance: '1.2km',
+            icon: Icons.headphones_rounded,
+            impact: '4.5 kg CO₂ saved',
+          ),
+          const SizedBox(height: 34),
+          const Text(
+            'Latest Listings',
+            style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800, color: ink),
+          ),
+          const SizedBox(height: 18),
+          const FirestoreListingsList(),
+        ],
       ),
     );
   }
+}
 
-  static IconData _iconForCategory(String category) {
-    switch (category.toLowerCase()) {
-      case 'electronics':
-        return Icons.devices_outlined;
-      case 'bags':
-        return Icons.backpack_outlined;
-      case 'stationery':
-        return Icons.edit_outlined;
-      case 'furniture':
-        return Icons.chair_outlined;
-      case 'books':
-        return Icons.menu_book_rounded;
-      default:
-        return Icons.inventory_2_outlined;
+class FirestoreListingsList extends StatelessWidget {
+  const FirestoreListingsList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('listings').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text(
+              'Unable to load listings right now.',
+              style: TextStyle(color: muted, fontSize: 16),
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(30),
+            child: Center(child: CircularProgressIndicator(color: green)),
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+
+        if (docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(30),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: border),
+            ),
+            child: const Text(
+              'No listings yet. Create your first listing from Sell.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 17, color: muted),
+            ),
+          );
+        }
+
+        return Column(
+          children: docs.map((doc) {
+            final data = doc.data();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: ProductCard(
+                listingId: doc.id,
+                title: (data['title'] ?? 'Untitled listing').toString(),
+                price: _formatPrice(data['price']),
+                condition: (data['condition'] ?? 'Condition not specified').toString(),
+                distance: 'Nearby',
+                icon: _iconForCategory(data['category']),
+                impact: _impactForCategory(data['category']),
+                sellerId: (data['sellerId'] ?? '').toString(),
+                sellerName: (data['sellerName'] ?? data['sellerEmail'] ?? 'ReLoop Student').toString(),
+                description: (data['description'] ?? '').toString(),
+                category: (data['category'] ?? 'Other').toString(),
+                listingType: (data['listingType'] ?? 'Sell').toString(),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+String _formatPrice(dynamic value) {
+  if (value == null) return '₹0';
+  if (value is num) {
+    final number = value.toDouble();
+    if (number == number.roundToDouble()) {
+      return '₹${number.toInt()}';
     }
+    return '₹${number.toStringAsFixed(2)}';
+  }
+  final text = value.toString().trim();
+  return text.isEmpty ? '₹0' : (text.startsWith('₹') ? text : '₹$text');
+}
+
+IconData _iconForCategory(dynamic value) {
+  switch (value?.toString()) {
+    case 'Books':
+      return Icons.menu_book_rounded;
+    case 'Electronics':
+      return Icons.devices_rounded;
+    case 'Bags':
+      return Icons.backpack_rounded;
+    case 'Stationery':
+      return Icons.edit_rounded;
+    case 'Furniture':
+      return Icons.chair_rounded;
+    default:
+      return Icons.inventory_2_outlined;
+  }
+}
+
+String _impactForCategory(dynamic value) {
+  switch (value?.toString()) {
+    case 'Books':
+      return '1.2 kg CO₂ saved';
+    case 'Electronics':
+      return '4.5 kg CO₂ saved';
+    case 'Bags':
+      return '2.1 kg CO₂ saved';
+    case 'Stationery':
+      return '0.5 kg CO₂ saved';
+    default:
+      return '1.0 kg CO₂ saved';
   }
 }
 
@@ -752,7 +822,28 @@ class CategoryChip extends StatelessWidget {
 class ProductCard extends StatelessWidget {
   final String title, price, condition, distance, impact;
   final IconData icon;
-  const ProductCard({super.key, required this.title, required this.price, required this.condition, required this.distance, required this.icon, required this.impact});
+  final String? listingId;
+  final String? sellerId;
+  final String? sellerName;
+  final String? description;
+  final String? category;
+  final String? listingType;
+
+  const ProductCard({
+    super.key,
+    required this.title,
+    required this.price,
+    required this.condition,
+    required this.distance,
+    required this.icon,
+    required this.impact,
+    this.listingId,
+    this.sellerId,
+    this.sellerName,
+    this.description,
+    this.category,
+    this.listingType,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -812,8 +903,32 @@ class ProductCard extends StatelessWidget {
                   const Text('Arun Kumar', style: TextStyle(fontSize: 16, color: muted)),
                   const Spacer(),
                   TextButton(
-                    onPressed: () {},
-                    style: TextButton.styleFrom(backgroundColor: const Color(0xFF9DF1B2), foregroundColor: green),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ListingDetailsScreen(
+                            listingId: listingId ?? '',
+                            data: {
+                              'title': title,
+                              'price': price,
+                              'condition': condition,
+                              'distance': distance,
+                              'impact': impact,
+                              'sellerId': sellerId ?? '',
+                              'sellerName': sellerName ?? 'ReLoop Student',
+                              'description': description ?? '',
+                              'category': category ?? 'Other',
+                              'listingType': listingType ?? 'Sell',
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFF9DF1B2),
+                      foregroundColor: green,
+                    ),
                     child: const Text('View'),
                   ),
                 ]),
@@ -821,6 +936,268 @@ class ProductCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class ListingDetailsScreen extends StatelessWidget {
+  final String listingId;
+  final Map<String, dynamic> data;
+
+  const ListingDetailsScreen({
+    super.key,
+    required this.listingId,
+    required this.data,
+  });
+
+  Future<void> _requestItem(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login to request this item.')),
+      );
+      return;
+    }
+
+    final sellerId = (data['sellerId'] ?? '').toString();
+
+    if (sellerId.isNotEmpty && sellerId == user.uid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cannot request your own listing.')),
+      );
+      return;
+    }
+
+    final listingTitle = (data['title'] ?? 'Untitled listing').toString();
+
+    try {
+      final duplicateQuery = await FirebaseFirestore.instance
+          .collection('requests')
+          .where('requesterId', isEqualTo: user.uid)
+          .where('listingId', isEqualTo: listingId)
+          .where('status', isEqualTo: 'pending')
+          .limit(1)
+          .get();
+
+      if (duplicateQuery.docs.isNotEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You already have a pending request for this item.'),
+          ),
+        );
+        return;
+      }
+
+      await FirebaseFirestore.instance.collection('requests').add({
+        'listingId': listingId,
+        'listingTitle': listingTitle,
+        'requesterId': user.uid,
+        'requesterEmail': user.email ?? '',
+        'sellerId': sellerId,
+        'sellerName': (data['sellerName'] ?? 'ReLoop Student').toString(),
+        'listingType': (data['listingType'] ?? 'Sell').toString(),
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!context.mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Request Sent'),
+            content: Text(
+              'Your request for "$listingTitle" has been sent to the seller.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      );
+    } on FirebaseException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'Unable to send request.'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (data['title'] ?? 'Untitled listing').toString();
+    final description =
+    (data['description'] ?? 'No description provided.').toString();
+    final condition =
+    (data['condition'] ?? 'Condition not specified').toString();
+    final category = (data['category'] ?? 'Other').toString();
+    final listingType = (data['listingType'] ?? 'Sell').toString();
+    final seller = (data['sellerName'] ?? 'ReLoop Student').toString();
+    final price = (data['price'] ?? 'Price N/A').toString();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FF),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F9FF),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: ink),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Listing Details',
+          style: TextStyle(
+            color: ink,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(30, 18, 30, 35),
+          children: [
+            Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF1EA),
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: const Icon(
+                Icons.inventory_2_outlined,
+                size: 100,
+                color: green,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
+                color: ink,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              price,
+              style: const TextStyle(
+                fontSize: 27,
+                fontWeight: FontWeight.w800,
+                color: green,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _DetailChip(text: category),
+                _DetailChip(text: condition),
+                _DetailChip(text: listingType),
+              ],
+            ),
+            const SizedBox(height: 28),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Description',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: ink,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    description.isEmpty
+                        ? 'No description provided.'
+                        : description,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      color: muted,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      const CircleAvatar(
+                        backgroundColor: green,
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          seller,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: ink,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+            PrimaryButton(
+              text: 'Request This Item',
+              onTap: () => _requestItem(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailChip extends StatelessWidget {
+  final String text;
+
+  const _DetailChip({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EDFC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: muted,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -1202,110 +1579,188 @@ class ExploreScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('listings')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          final docs = snapshot.data?.docs ?? [];
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
-            children: [
-              const AppHeader(),
-              const SizedBox(height: 45),
-              const Text(
-                'Explore Listings',
-                style: TextStyle(
-                  fontSize: 37,
-                  fontWeight: FontWeight.w800,
-                  color: ink,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(30, 18, 30, 30),
+        children: [
+          const AppHeader(),
+          const SizedBox(height: 45),
+          const Text(
+            'Explore Listings',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 37, fontWeight: FontWeight.w800, color: ink),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Find items listed by students around you.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18, color: muted),
+          ),
+          const SizedBox(height: 35),
+          const FirestoreListingsList(),
+          const SizedBox(height: 35),
+          const Divider(height: 1),
+          const SizedBox(height: 35),
+          const Center(
+            child: Text(
+              '✨ Smart Matches',
+              style: TextStyle(color: green, fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(height: 15),
+          const Text(
+            'Perfect Match',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: ink),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'We found students who need what you have.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 17, color: muted),
+          ),
+          const SizedBox(height: 30),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'YOUR ITEM',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: muted,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      SizedBox(height: 22),
+                      Row(
+                        children: [
+                          ItemIllustration(icon: Icons.menu_book_rounded),
+                          SizedBox(width: 22),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Java Programming\nBook',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: ink,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                Text(
+                                  'Condition: Like New',
+                                  style: TextStyle(fontSize: 17, color: muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.fromLTRB(28, 40, 28, 30),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9AF0AB),
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 17,
+                            backgroundColor: Colors.white,
+                            child: Icon(Icons.person, color: green, size: 20),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Priya needs this book',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: green,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 25),
+                      Row(
+                        children: [
+                          ItemIllustration(icon: Icons.auto_stories_rounded),
+                          SizedBox(width: 22),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'SHE OFFERS',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: muted,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Python Programming\nBook',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: green,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 35),
+          PrimaryButton(text: 'View Match', onTap: () {}),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 70,
+            child: ElevatedButton(
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD2F2DA),
+                foregroundColor: green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
                 ),
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Find items shared by your campus community.',
-                style: TextStyle(fontSize: 19, color: muted),
+              child: const Text(
+                'Start Exchange',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 28),
-              const SearchBox(),
-              const SizedBox(height: 28),
-
-              if (snapshot.connectionState == ConnectionState.waiting)
-                const Center(child: CircularProgressIndicator())
-              else if (snapshot.hasError)
-                const Text(
-                  'Unable to load listings.',
-                  style: TextStyle(color: muted, fontSize: 17),
-                )
-              else if (docs.isEmpty)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: 60),
-                      child: Text(
-                        'No listings yet.',
-                        style: TextStyle(fontSize: 18, color: muted),
-                      ),
-                    ),
-                  )
-                else
-                  ...docs.map((doc) {
-                    final data = doc.data();
-                    final title = (data['title'] ?? 'Untitled').toString();
-                    final description =
-                    (data['description'] ?? '').toString();
-                    final category =
-                    (data['category'] ?? 'Other').toString();
-                    final condition =
-                    (data['condition'] ?? 'Good').toString();
-                    final listingType =
-                    (data['listingType'] ?? 'Sell').toString();
-                    final price = data['price'];
-
-                    String priceText = 'Free';
-                    if (price is num && price > 0) {
-                      priceText = '₹${price.toStringAsFixed(0)}';
-                    }
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: ProductCard(
-                        title: title,
-                        price: priceText,
-                        condition: condition,
-                        distance: category,
-                        icon: _iconForCategory(category),
-                        impact: listingType == 'Donate'
-                            ? 'Donation'
-                            : description.isEmpty
-                            ? 'Available'
-                            : 'Listed',
-                      ),
-                    );
-                  }),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
-  }
-
-  static IconData _iconForCategory(String category) {
-    switch (category.toLowerCase()) {
-      case 'electronics':
-        return Icons.devices_outlined;
-      case 'bags':
-        return Icons.backpack_outlined;
-      case 'stationery':
-        return Icons.edit_outlined;
-      case 'furniture':
-        return Icons.chair_outlined;
-      case 'books':
-        return Icons.menu_book_rounded;
-      default:
-        return Icons.inventory_2_outlined;
-    }
   }
 }
 
@@ -1452,6 +1907,414 @@ class ChartPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+
+class RequestsScreen extends StatefulWidget {
+  const RequestsScreen({super.key});
+
+  @override
+  State<RequestsScreen> createState() => _RequestsScreenState();
+}
+
+class _RequestsScreenState extends State<RequestsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  bool _updating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updateRequest(
+      BuildContext context,
+      DocumentSnapshot<Map<String, dynamic>> doc,
+      String status,
+      ) async {
+    if (_updating) return;
+
+    setState(() => _updating = true);
+    try {
+      await doc.reference.update({
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            status == 'accepted'
+                ? 'Request accepted successfully.'
+                : 'Request rejected.',
+          ),
+        ),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Unable to update request.')),
+      );
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'accepted':
+        return 'Accepted';
+      case 'rejected':
+        return 'Rejected';
+      default:
+        return 'Pending';
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'accepted':
+        return green;
+      case 'rejected':
+        return Colors.red.shade700;
+      default:
+        return Colors.orange.shade800;
+    }
+  }
+
+  Widget _statusChip(String status) {
+    final color = _statusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        _statusLabel(status),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+
+  Widget _requestCard(
+      BuildContext context,
+      DocumentSnapshot<Map<String, dynamic>> doc, {
+        required bool incoming,
+      }) {
+    final data = doc.data() ?? <String, dynamic>{};
+    final title = (data['listingTitle'] ?? 'Untitled listing').toString();
+    final listingType = (data['listingType'] ?? 'Sell').toString();
+    final status = (data['status'] ?? 'pending').toString();
+    final requesterEmail = (data['requesterEmail'] ?? 'Student').toString();
+    final sellerName = (data['sellerName'] ?? 'ReLoop Student').toString();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: lightGreen,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.inventory_2_outlined, color: green),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      incoming
+                          ? 'Requested by $requesterEmail'
+                          : 'Seller: $sellerName',
+                      style: const TextStyle(color: muted, fontSize: 15),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _smallTag(listingType),
+                        const SizedBox(width: 8),
+                        _statusChip(status),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (incoming && status == 'pending') ...[
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _updating
+                        ? null
+                        : () => _updateRequest(context, doc, 'rejected'),
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Reject'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade200),
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _updating
+                        ? null
+                        : () => _updateRequest(context, doc, 'accepted'),
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Accept'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (!incoming && status == 'accepted') ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: lightGreen,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_outline, color: green),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'The seller accepted your request.',
+                      style: TextStyle(
+                        color: green,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (!incoming && status == 'rejected') ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.red),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'The seller rejected your request.',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _smallTag(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F5F1),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: muted,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _requestList({required bool incoming}) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const Center(child: Text('Please login to view requests.'));
+    }
+
+    final field = incoming ? 'sellerId' : 'requesterId';
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('requests')
+          .where(field, isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Unable to load requests.\n${snapshot.error}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: muted),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: green));
+        }
+
+        final docs = [...(snapshot.data?.docs ?? [])];
+        docs.sort((a, b) {
+          final aTime = a.data()['createdAt'];
+          final bTime = b.data()['createdAt'];
+          if (aTime is Timestamp && bTime is Timestamp) {
+            return bTime.compareTo(aTime);
+          }
+          return 0;
+        });
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(35),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.inbox_outlined, size: 58, color: muted),
+                  const SizedBox(height: 14),
+                  Text(
+                    incoming ? 'No incoming requests yet.' : 'No requests yet.',
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      color: ink,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    incoming
+                        ? 'Requests from students will appear here.'
+                        : 'Items you request will appear here.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: muted),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 30),
+          itemCount: docs.length,
+          itemBuilder: (context, index) => _requestCard(
+            context,
+            docs[index],
+            incoming: incoming,
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FF),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F9FF),
+        foregroundColor: ink,
+        elevation: 0,
+        title: const Text(
+          'Requests & Exchanges',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: green,
+          unselectedLabelColor: muted,
+          indicatorColor: green,
+          tabs: const [
+            Tab(text: 'Incoming'),
+            Tab(text: 'My Requests'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _requestList(incoming: true),
+          _requestList(incoming: false),
+        ],
+      ),
+    );
+  }
+}
+
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
   @override
@@ -1495,6 +2358,13 @@ class ProfileScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const MyListingsScreen(),
+                  ),
+                );
+              } else if (e.$1 == 'My Exchanges') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RequestsScreen(),
                   ),
                 );
               }
